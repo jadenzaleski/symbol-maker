@@ -1,0 +1,23 @@
+# the real .git folder lives in .git.nosync so iCloud does not sync it
+.git.nosync/
+
+# build output
+/dist/
+/dist.building/
+
+# Python / macOS
+__pycache__/
+*.pyc
+.DS_Store
+
+# local working data and the retired local app (not part of the site)
+/_legacy.nosync/
+/export/
+/out
+/out.nosync/
+/source
+/source.nosync/
+/vendor.nosync/
+/venv.nosync/
+/canonical.txt
+/docs/
