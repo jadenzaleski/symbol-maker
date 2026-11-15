@@ -1,7 +1,7 @@
 # Symbol Maker
 
-Icons from [Lucide](https://lucide.dev), [Tabler Icons](https://tabler.io/icons), [Heroicons](https://heroicons.com) and
-[Sidekickicons](https://github.com/ndri/sidekickicons) as ready-to-use **SF Symbols templates**, with Ultralight, Regular
+Icons from [Lucide](https://lucide.dev), [Tabler Icons](https://tabler.io/icons), [Heroicons](https://heroicons.com),
+[Sidekickicons](https://github.com/ndri/sidekickicons) and [Iconoir](https://iconoir.com) as ready-to-use **SF Symbols templates**, with Ultralight, Regular
 and Black weights that line up the way Apple's do. The result is a static site on GitHub Pages: pick an icon set and an
 icon, check it against the template's guides, and download either
 
@@ -41,6 +41,10 @@ needed only for one test that compiles a sample catalog with `actool`.
 OUT=somewhere ./ci.sh    # write the site somewhere other than ./dist
 ```
 
+Conversions are cached in `./build-cache.nosync` (or `$CACHE`): an icon is converted again only if its SVG, the engine
+code, the SwiftDraw version or the weights changed, so a rebuild after a new icon-set release takes seconds. Delete the
+folder to start fresh.
+
 That is exactly what the workflow runs. Only the Python standard library is used.
 
 ## Publishing
@@ -55,5 +59,5 @@ the page.
 
 The code in this repository is under the GPL-3.0 license (see `LICENSE`).
 
-Each icon set keeps its own license (Lucide: ISC; Tabler Icons, Heroicons and Sidekickicons: MIT). The notice is on the
+Each icon set keeps its own license (Lucide: ISC; Tabler Icons, Heroicons, Sidekickicons and Iconoir: MIT). The notice is on the
 site, in every download and in each template as a comment. SF Symbols is a trademark of Apple Inc.; this project is not affiliated with Apple.

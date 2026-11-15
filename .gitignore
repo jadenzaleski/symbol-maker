@@ -6,6 +6,7 @@
 /dist.building/
 /dist.nosync/
 /dist.nosync.building/
+/build-cache.nosync/
 
 # Python / macOS
 __pycache__/

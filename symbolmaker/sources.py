@@ -68,6 +68,8 @@ SOURCES = {s.id: s for s in (
            keep=lambda n: not n.endswith('-filled')),
     Source('heroicons', 'Heroicons', '@iconify-json/heroicons', 'iconify', 'https://heroicons.com',
            keep=lambda n: not n.endswith('-solid')),                      # also drops -20-solid and -16-solid
+    Source('iconoir', 'Iconoir', '@iconify-json/iconoir', 'iconify', 'https://iconoir.com',
+           keep=lambda n: not n.endswith('-solid')),
     Source('sidekickicons', 'Sidekickicons', '@iconify-json/sidekickicons', 'iconify', 'https://github.com/ndri/sidekickicons',
            keep=lambda n: not n.endswith('-solid')),
 )}

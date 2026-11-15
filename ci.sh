@@ -4,6 +4,7 @@
 #   ./ci.sh --serve    build, then preview at http://127.0.0.1:8000
 #   ./ci.sh --limit 50 only convert the first 50 icons (quick)
 # Output goes to ./dist, or to $OUT (on iCloud Desktop use OUT=dist.nosync so it is not synced).
+# Conversions are cached in ./build-cache.nosync (or $CACHE): icons that have not changed are not converted again.
 set -eu
 cd "$(dirname "$0")"
 if ! command -v swiftdraw >/dev/null 2>&1; then
@@ -11,4 +12,4 @@ if ! command -v swiftdraw >/dev/null 2>&1; then
   exit 1
 fi
 python3 -m unittest discover -s tests -t .
-python3 -m symbolmaker.sitebuild --out "${OUT:-dist}" "$@"
+python3 -m symbolmaker.sitebuild --out "${OUT:-dist}" --cache "${CACHE:-build-cache.nosync}" "$@"

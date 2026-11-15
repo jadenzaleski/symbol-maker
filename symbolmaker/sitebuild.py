@@ -18,6 +18,8 @@ Needs `swiftdraw` on PATH (`brew install swiftdraw`) and network access to the n
 import argparse
 import datetime
 import functools
+import gzip
+import hashlib
 import io
 import json
 import os
@@ -44,6 +46,51 @@ ROOT = Path(__file__).resolve().parent.parent
 
 class BuildError(RuntimeError):
     pass
+
+
+def engine_fingerprint(swiftdraw):
+    """Identifies everything a converted icon depends on besides its own SVG: the engine code, the weights and the
+    SwiftDraw version. When it changes, every cached conversion is stale."""
+    h = hashlib.sha256()
+    for f in sorted((ROOT / 'symbolmaker' / 'engine').glob('*.py')):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    h.update(f'weights {APPLE_ULTRA} {APPLE_BLACK}; swiftdraw {swiftdraw}; cache format 1'.encode())
+    return h.hexdigest()
+
+
+class ConvertCache:
+    """Conversion results kept between builds, one gzip file per source, keyed by the hash of the icon's SVG.
+    A file written under a different fingerprint, or damaged, is treated as empty. Only successes are kept."""
+
+    def __init__(self, directory, fingerprint):
+        self.directory, self.fingerprint = Path(directory), fingerprint
+
+    @staticmethod
+    def key(svg):
+        return hashlib.sha256(svg.encode('utf-8')).hexdigest()
+
+    def _path(self, source_id):
+        return self.directory / f'{source_id}.json.gz'
+
+    def load(self, source_id):
+        try:
+            with gzip.open(self._path(source_id), 'rt', encoding='utf-8') as f:
+                data = json.load(f)
+            if data.get('fingerprint') != self.fingerprint:
+                return {}
+            return {k: ('ok', *v) for k, v in data['entries'].items()}
+        except (OSError, ValueError, KeyError, TypeError, EOFError):
+            return {}
+
+    def save(self, source_id, entries):
+        self.directory.mkdir(parents=True, exist_ok=True)
+        target = self._path(source_id)
+        tmp = target.with_suffix('.tmp')
+        payload = {'fingerprint': self.fingerprint, 'entries': {k: list(v[1:]) for k, v in entries.items()}}
+        with gzip.GzipFile(tmp, 'wb', mtime=0) as f:
+            f.write(json.dumps(payload, separators=(',', ':')).encode('utf-8'))
+        os.replace(tmp, target)
 
 
 def convert_apple(svg):
@@ -101,14 +148,20 @@ def _convert_all(svgs, convert, jobs):
     return [_run(convert, s) for s in svgs]
 
 
-def _write_source(work, source, rel, convert, max_failed, limit, jobs, log):
+def _write_source(work, source, rel, convert, max_failed, limit, jobs, log, cache=None):
     base = work / source.id
     for d in ('templates', 'guides', 'zips', 'icons'):
         (base / d).mkdir(parents=True)
     names = rel['names'][:limit] if limit else rel['names']
     license_file = f'LICENSE-{source.id}.txt'
     icons, failed = [], []
-    results = _convert_all([rel['svgs'][n] for n in names], convert, jobs)
+    svgs = [rel['svgs'][n] for n in names]
+    keys = [ConvertCache.key(v) for v in svgs]
+    known = cache.load(source.id) if cache else {}
+    todo = [i for i, k in enumerate(keys) if k not in known]
+    fresh = dict(zip(todo, _convert_all([svgs[i] for i in todo], convert, jobs)))
+    results = [fresh[i] if i in fresh else known[k] for i, k in enumerate(keys)]
+    kept = {k: r for k, r in zip(keys, results) if r[0] == 'ok'}          # failures are retried next time
     for icon, res in zip(names, results):
         if res[0] == 'err':
             failed.append({'name': icon, 'error': res[1]})
@@ -135,22 +188,26 @@ def _write_source(work, source, rel, convert, max_failed, limit, jobs, log):
                          f'First: {failed[0]["name"]}: {failed[0]["error"]}')
     (base / 'index.json').write_text(json.dumps({'icons': icons, 'failed': failed}, separators=(',', ':')), encoding='utf-8')
     (base / 'LICENSE.txt').write_text(rel['license'], encoding='utf-8')
+    cached = len(names) - len(todo)
     if log:
-        log(f'{source.title}: {len(icons)} icons, {len(failed)} failed')
-    return {'icons': len(icons), 'failed': len(failed)}
+        log(f'{source.title}: {len(icons)} icons, {len(failed)} failed' + (f', {cached} reused from the cache' if cache else ''))
+    return {'icons': len(icons), 'failed': len(failed), 'cached': cached}, kept
 
 
-def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_failed=0.02, limit=None, jobs=1, log=None):
+def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_failed=0.02, limit=None, jobs=1, log=None,
+          cache=None):
     """Write the site into `out` (replacing it) from [(Source, release), ...]. Returns {source id: {'icons', 'failed'}}.
-    Raises BuildError, leaving `out` untouched, when more than `max_failed` of any source's icons fail to convert."""
+    Raises BuildError, leaving `out` untouched, when more than `max_failed` of any source's icons fail to convert.
+    With a `cache` (a ConvertCache), icons already converted under the same fingerprint are not converted again; the
+    cache is written only once the whole build has succeeded."""
     out = Path(out)
     work = out.parent / (out.name + '.building')
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     try:
-        summary, listing = {}, []
+        summary, listing, to_cache = {}, [], {}
         for source, rel in items:
-            summary[source.id] = _write_source(work, source, rel, convert, max_failed, limit, jobs, log)
+            summary[source.id], to_cache[source.id] = _write_source(work, source, rel, convert, max_failed, limit, jobs, log, cache)
             listing.append({'id': source.id, 'title': source.title, 'version': rel['version'], 'license': rel['license_name'],
                             'homepage': source.homepage, 'count': summary[source.id]['icons'],
                             'failed': summary[source.id]['failed']})
@@ -166,6 +223,9 @@ def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_
         raise
     shutil.rmtree(out, ignore_errors=True)
     work.rename(out)
+    if cache:
+        for source_id, entries in to_cache.items():
+            cache.save(source_id, entries)
     return summary
 
 
@@ -181,6 +241,7 @@ def main(argv=None):
     ap.add_argument('--site', default=str(ROOT / 'site'), help='folder with the page (index.html, site.js, site.css)')
     ap.add_argument('--only', help=f'comma-separated sources to build (default: all of {", ".join(SOURCES)})')
     ap.add_argument('--limit', type=int, help='only convert the first N icons of each source (quick local runs)')
+    ap.add_argument('--cache', metavar='DIR', help='reuse conversions from earlier builds kept in DIR (unchanged icons are skipped)')
     ap.add_argument('--jobs', type=int, default=os.cpu_count() or 1, help='conversion processes (default: all cores)')
     ap.add_argument('--serve', action='store_true', help='after building, preview the site at http://127.0.0.1:8000')
     ap.add_argument('--port', type=int, default=8000)
@@ -198,8 +259,10 @@ def main(argv=None):
         print(f'  v{rel["version"]}: {len(rel["names"])} icons', flush=True)
         items.append((SOURCES[i], rel))
     print('Converting…', flush=True)
-    summary = build(args.out, items, swiftdraw=swiftdraw_version(), site_dir=args.site, limit=args.limit, jobs=args.jobs,
-                    log=lambda m: print('  ' + m, flush=True))
+    sd = swiftdraw_version()
+    cache = ConvertCache(args.cache, engine_fingerprint(sd)) if args.cache else None
+    build(args.out, items, swiftdraw=sd, site_dir=args.site, limit=args.limit, jobs=args.jobs, cache=cache,
+          log=lambda m: print('  ' + m, flush=True))
     print(f'Done. Wrote {args.out}/')
     if args.serve:
         srv = make_preview_server(args.out, args.port)

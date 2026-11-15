@@ -138,7 +138,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(d['failed'], [{'name': 'heart', 'error': 'cannot convert'}])
         self.assertEqual([i['name'] for i in d['icons']], ['a-arrow-down', 'house'])
         self.assertFalse((self.out / 'lucide/templates/lucide.heart.svg').exists())
-        self.assertEqual(s['lucide'], {'icons': 2, 'failed': 1})
+        self.assertEqual(s['lucide'], {'icons': 2, 'failed': 1, 'cached': 0})
 
     def test_too_many_failures_in_one_source_stop_the_build_before_anything_is_published(self):
         def convert(svg):
@@ -158,6 +158,100 @@ class BuildTests(unittest.TestCase):
         self.build([(LUCIDE, release()), (TABLER, release(['home', 'star', 'x']))], limit=2)
         self.assertEqual(len(json.loads((self.out / 'lucide/index.json').read_text())['icons']), 2)
         self.assertEqual(len(json.loads((self.out / 'tabler/index.json').read_text())['icons']), 2)
+
+
+class CacheTests(unittest.TestCase):
+    """Icons whose SVG, engine code, SwiftDraw version and weights are unchanged are not converted again."""
+
+    def setUp(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.out, self.cache_dir = tmp / 'dist', tmp / 'cache'
+        self.converted = []
+
+    def convert(self, svg):
+        self.converted.append(svg)
+        return fake_convert(svg)
+
+    def build(self, rel, fingerprint='fp1', **kw):
+        cache = sitebuild.ConvertCache(self.cache_dir, fingerprint)
+        return sitebuild.build(self.out, [(LUCIDE, rel)], convert=self.convert, cache=cache, **kw)
+
+    def templates(self):
+        return {p.name: p.read_text() for p in sorted((self.out / 'lucide/templates').iterdir())}
+
+    def test_the_second_build_converts_nothing(self):
+        rel = release()
+        first = self.build(rel); first_templates = self.templates()
+        self.assertEqual((len(self.converted), first['lucide']['cached']), (3, 0))
+        self.converted.clear()
+        second = self.build(rel)
+        self.assertEqual((self.converted, second['lucide']['cached']), ([], 3))
+        self.assertEqual(self.templates(), first_templates)               # same output either way
+
+    def test_only_a_changed_icon_is_converted_again(self):
+        rel = release()
+        self.build(rel); self.converted.clear()
+        rel['svgs']['heart'] = '<svg class="icon-heart" data-edited="1"/>'
+        s = self.build(rel)
+        self.assertEqual(self.converted, [rel['svgs']['heart']])
+        self.assertEqual(s['lucide']['cached'], 2)
+
+    def test_a_new_engine_or_swiftdraw_or_weights_fingerprint_converts_everything(self):
+        rel = release()
+        self.build(rel, fingerprint='fp1'); self.converted.clear()
+        self.build(rel, fingerprint='fp2')
+        self.assertEqual(len(self.converted), 3)
+
+    def test_icons_that_left_the_set_are_dropped_from_the_cache(self):
+        self.build(release()); self.converted.clear()
+        self.build(release(['house']))
+        self.converted.clear()
+        self.build(release())                                              # heart and a-arrow-down come back: reconverted
+        self.assertEqual(len(self.converted), 2)
+
+    def test_failures_are_not_cached_so_they_are_retried(self):
+        calls = []
+
+        def flaky(svg):
+            calls.append(svg)
+            raise ValueError('boom')
+        cache = sitebuild.ConvertCache(self.cache_dir, 'fp1')
+        for _ in range(2):
+            sitebuild.build(self.out, [(LUCIDE, release(['heart']))], convert=flaky, cache=cache, max_failed=1.0)
+        self.assertEqual(len(calls), 2)
+
+    def test_a_damaged_cache_file_is_ignored(self):
+        rel = release()
+        self.build(rel)
+        for f in self.cache_dir.iterdir():
+            f.write_bytes(b'not gzip at all')
+        self.converted.clear()
+        self.build(rel)
+        self.assertEqual(len(self.converted), 3)
+
+    def test_the_cache_is_written_only_after_a_successful_build(self):
+        def convert(svg):
+            raise ValueError('nope')
+        cache = sitebuild.ConvertCache(self.cache_dir, 'fp1')
+        with self.assertRaises(sitebuild.BuildError):
+            sitebuild.build(self.out, [(LUCIDE, release())], convert=convert, cache=cache)
+        self.assertFalse(self.cache_dir.exists() and any(self.cache_dir.iterdir()))
+
+
+class FingerprintTests(unittest.TestCase):
+    def test_depends_on_swiftdraw_version_and_is_stable(self):
+        a = sitebuild.engine_fingerprint('0.29.0')
+        self.assertEqual(a, sitebuild.engine_fingerprint('0.29.0'))
+        self.assertNotEqual(a, sitebuild.engine_fingerprint('0.30.0'))
+        self.assertRegex(a, r'^[0-9a-f]{64}$')
+
+    def test_depends_on_the_engine_code(self):
+        from unittest import mock
+        a = sitebuild.engine_fingerprint('0.29.0')
+        real = Path.read_bytes
+        with mock.patch.object(Path, 'read_bytes', lambda self: real(self) + b'x' if self.name == 'weights.py' else real(self)):
+            self.assertNotEqual(a, sitebuild.engine_fingerprint('0.29.0'))
 
 
 class ServeTests(unittest.TestCase):

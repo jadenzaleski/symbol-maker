@@ -12,6 +12,7 @@ LUCIDE = SOURCES['lucide']
 TABLER = SOURCES['tabler']
 HERO = SOURCES['heroicons']
 SIDEKICK = SOURCES['sidekickicons']
+ICONOIR = SOURCES['iconoir']
 
 
 def tgz(files):
@@ -70,7 +71,7 @@ class Net:
 
 class RegistryTests(unittest.TestCase):
     def test_ids_prefixes_and_packages_are_unique_and_usable(self):
-        self.assertEqual(set(SOURCES), {'lucide', 'tabler', 'heroicons', 'sidekickicons'})
+        self.assertEqual(set(SOURCES), {'lucide', 'tabler', 'heroicons', 'sidekickicons', 'iconoir'})
         self.assertEqual(len({s.prefix for s in SOURCES.values()}), len(SOURCES))
         for s in SOURCES.values():
             self.assertEqual(s.id, s.prefix)
@@ -84,7 +85,7 @@ class RegistryTests(unittest.TestCase):
     def test_only_the_outline_style_is_kept(self):
         self.assertTrue(TABLER.keep('home'))
         self.assertFalse(TABLER.keep('home-filled'))
-        for s in (HERO, SIDEKICK):
+        for s in (HERO, SIDEKICK, ICONOIR):
             self.assertTrue(s.keep('home'))
             for suffix in ('-solid', '-20-solid', '-16-solid'):
                 self.assertFalse(s.keep('home' + suffix), suffix)
