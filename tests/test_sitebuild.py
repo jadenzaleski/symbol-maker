@@ -138,7 +138,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(d['failed'], [{'name': 'heart', 'error': 'cannot convert'}])
         self.assertEqual([i['name'] for i in d['icons']], ['a-arrow-down', 'house'])
         self.assertFalse((self.out / 'lucide/templates/lucide.heart.svg').exists())
-        self.assertEqual(s['lucide'], {'icons': 2, 'failed': 1, 'cached': 0})
+        self.assertEqual({k: s['lucide'][k] for k in ('icons', 'failed', 'cached')}, {'icons': 2, 'failed': 1, 'cached': 0})
 
     def test_too_many_failures_in_one_source_stop_the_build_before_anything_is_published(self):
         def convert(svg):
@@ -239,6 +239,103 @@ class CacheTests(unittest.TestCase):
         self.assertFalse(self.cache_dir.exists() and any(self.cache_dir.iterdir()))
 
 
+class Recorder:
+    """A reporter that remembers what it was told."""
+    def __init__(self):
+        self.calls = []
+
+    def info(self, text=''): self.calls.append(('info', text))
+    def start(self, title, total, reused=0): self.calls.append(('start', title, total, reused))
+    def advance(self, n=1): self.calls.append(('advance', n))
+    def done(self, stats): self.calls.append(('done', stats)); return 1.5
+    def table(self, rows): self.calls.append(('table', rows))
+
+
+class ReportingTests(unittest.TestCase):
+    def setUp(self):
+        self.out = Path(tempfile.mkdtemp()) / 'dist'
+        self.addCleanup(shutil.rmtree, self.out.parent, True)
+
+    def build(self, items, reporter, **kw):
+        return sitebuild.build(self.out, items, convert=fake_convert, reporter=reporter, **kw)
+
+    def test_the_reporter_is_told_the_total_every_step_and_the_result_per_source(self):
+        rec = Recorder()
+        self.build([(LUCIDE, release()), (TABLER, release(['home', 'star']))], rec)
+        starts = [c for c in rec.calls if c[0] == 'start']
+        self.assertEqual([(c[1], c[2], c[3]) for c in starts], [('Lucide', 3, 0), ('Tabler Icons', 2, 0)])
+        advanced = [c[1] for c in rec.calls if c[0] == 'advance']
+        self.assertEqual(sum(advanced), 5)
+        dones = [c[1] for c in rec.calls if c[0] == 'done']
+        self.assertEqual([d['icons'] for d in dones], [3, 2])
+        self.assertEqual(dones[0]['notes'], 3)                       # fake_convert gives every icon a note
+        self.assertEqual(dones[0]['problems'], 0)
+
+    def test_cached_icons_count_as_done_immediately_and_are_reported_as_reused(self):
+        cache = sitebuild.ConvertCache(self.out.parent / 'cache', 'fp')
+        self.build([(LUCIDE, release())], Recorder(), cache=cache)
+        rec = Recorder()
+        s = self.build([(LUCIDE, release())], rec, cache=cache)
+        self.assertEqual([c for c in rec.calls if c[0] == 'start'][0][3], 3)
+        self.assertEqual(sum(c[1] for c in rec.calls if c[0] == 'advance'), 3)
+        self.assertEqual(s['lucide']['cached'], 3)
+
+    def test_the_summary_carries_problems_notes_and_time(self):
+        def convert(svg):
+            r = fake_convert(svg)
+            r.problem = 'heart' in svg
+            return r
+        rec = Recorder()
+        s = sitebuild.build(self.out, [(LUCIDE, release())], convert=convert, reporter=rec)
+        self.assertEqual((s['lucide']['problems'], s['lucide']['notes']), (1, 2))      # 1 problem, 2 icons with only a note
+        self.assertEqual(s['lucide']['seconds'], 1.5)
+
+
+class RevisionTests(unittest.TestCase):
+    """Each icon records a short revision of its template and the day that template last changed."""
+
+    def setUp(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.out, self.cache_dir = tmp / 'dist', tmp / 'cache'
+
+    def build(self, rel, today, fingerprint='fp1'):
+        cache = sitebuild.ConvertCache(self.cache_dir, fingerprint)
+        sitebuild.build(self.out, [(LUCIDE, rel)], convert=fake_convert, cache=cache, today=today, swiftdraw='0.29.0')
+        return {i['name']: i for i in json.loads((self.out / 'lucide/index.json').read_text())['icons']}
+
+    def test_every_icon_has_a_revision_and_a_date(self):
+        icons = self.build(release(), '2026-11-15')
+        for i in icons.values():
+            self.assertRegex(i['rev'], r'^[0-9a-f]{8}$')
+            self.assertEqual(i['updated'], '2026-11-15')
+        self.assertEqual(len({i['rev'] for i in icons.values()}), 1)        # fake_convert gives every icon the same template
+
+    def test_the_revision_is_in_the_template_comment_too(self):
+        icons = self.build(release(['house']), '2026-11-15')
+        head = (self.out / 'lucide/templates/lucide.house.svg').read_text().split('<svg', 1)[0]
+        self.assertIn(icons['house']['rev'], head)
+
+    def test_an_unchanged_icon_keeps_its_date_and_a_changed_one_gets_the_new_day(self):
+        rel = release()
+        before = self.build(rel, '2026-11-15')
+        rel['svgs']['heart'] = '<svg class="icon-heart" data-edited="1"/>'
+        after = self.build(rel, '2026-12-01')
+        self.assertEqual(after['house']['updated'], '2026-11-15')
+        self.assertEqual(after['heart']['updated'], '2026-12-01')
+        self.assertEqual(after['house']['rev'], before['house']['rev'])
+
+    def test_a_new_engine_fingerprint_dates_everything_afresh(self):
+        self.build(release(), '2026-11-15', fingerprint='fp1')
+        after = self.build(release(), '2026-12-01', fingerprint='fp2')
+        self.assertEqual({i['updated'] for i in after.values()}, {'2026-12-01'})
+
+    def test_sources_json_names_the_engine(self):
+        self.build(release(), '2026-11-15')
+        d = json.loads((self.out / 'sources.json').read_text())
+        self.assertRegex(d['engine'], r'^[0-9a-f]{8}$')
+
+
 class FingerprintTests(unittest.TestCase):
     def test_depends_on_swiftdraw_version_and_is_stable(self):
         a = sitebuild.engine_fingerprint('0.29.0')
@@ -265,8 +362,11 @@ class ServeTests(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.shutdown)
         self.assertEqual(srv.server_address[0], '127.0.0.1')
-        with urllib.request.urlopen(f'http://127.0.0.1:{srv.server_address[1]}/index.html') as r:
+        import contextlib
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), urllib.request.urlopen(f'http://127.0.0.1:{srv.server_address[1]}/index.html') as r:
             self.assertEqual(r.read(), b'hello site')
+        self.assertEqual(err.getvalue(), '')                       # no request log lines mixed into the build output
 
 
 @unittest.skipUnless(find_swiftdraw(), 'swiftdraw not installed')

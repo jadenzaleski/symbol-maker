@@ -1,0 +1,14 @@
+# Keeps the GitHub Actions in .github/workflows up to date (one pull request a week for all of them).
+# The Python code has no third-party dependencies, so there is no pip entry; add one if that changes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

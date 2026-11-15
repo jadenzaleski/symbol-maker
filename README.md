@@ -47,13 +47,25 @@ folder to start fresh.
 
 That is exactly what the workflow runs. Only the Python standard library is used.
 
+## Revisions and reporting a problem
+
+Every template has a **revision** (`rev`, eight characters of a hash of the template) and an **updated** date: the day the
+icon was last converted. Both appear on the page, in `<set>/index.json` and (the revision) in a comment inside the SVG.
+An unchanged icon keeps its revision and date across builds, because its conversion is reused from the cache; they change
+when the icon's SVG, the engine code, the weights or the SwiftDraw version change. (If the cache is lost, dates restart
+at the next build; revisions stay the same.)
+
+On each icon, **Report a problem** opens a GitHub issue from the form in `.github/ISSUE_TEMPLATE/icon-problem.yml`, already
+filled in with the icon set, the icon, its revision and notes, and the build (engine and SwiftDraw versions).
+
 ## Publishing
 
 In the repository's **Settings → Pages**, set **Source** to **GitHub Actions**. The workflow in
 `.github/workflows/pages.yml` then builds and deploys on every push to `master`, every Monday, and on demand.
 
-The workflow installs whatever SwiftDraw version Homebrew has; the version used is recorded in `index.json` and shown on
-the page.
+The workflow installs whatever SwiftDraw version Homebrew has; the version used is recorded in `sources.json` and shown on
+the page. Dependabot (`.github/dependabot.yml`) opens a weekly pull request for newer versions of the GitHub Actions the
+workflow uses; the Python code has no third-party dependencies (`pyproject.toml` declares the Python version, 3.12+).
 
 ## Licenses
 

@@ -8,6 +8,7 @@ const ROW = 26;
 const WEIGHTS = [['ultralight', 'Ultralight'], ['regular', 'Regular'], ['black', 'Black']];
 const BADGES = { variable: ['Variable weights', ''], 'single-weight': ['Single weight', 'warn'], 'identical-masters': ['No weight change', 'warn'] };
 
+const REPO = 'https://github.com/jadenzaleski/symbol-maker';
 const state = { meta: null, source: null, index: null, indexes: {}, items: [], picked: null, seq: 0, onlyProblems: false };
 
 /* ---------- data ---------- */
@@ -115,7 +116,61 @@ async function pick(name, { scroll = true } = {}) {
   const svg = $('#dl-svg'), zip = $('#dl-zip');
   svg.href = `${id}/templates/${item.symbol}.svg`; svg.setAttribute('download', `${item.symbol}.svg`); svg.hidden = false;
   zip.href = `${id}/zips/${item.symbol}.symbolset.zip`; zip.setAttribute('download', `${item.symbol}.symbolset.zip`); zip.hidden = false;
-  const line = $('#symbol-line'); line.textContent = item.symbol; line.hidden = false;
+  const line = $('#symbol-line');
+  line.textContent = `${item.symbol} · rev ${item.rev} · updated ${item.updated}`; line.hidden = false;
+  const report = $('#report'); report.href = reportUrl(item); report.hidden = false;
+}
+
+// A pre-filled GitHub issue (the form in .github/ISSUE_TEMPLATE/icon-problem.yml): the field ids are the query names.
+function reportUrl(item) {
+  const src = state.source, m = state.meta;
+  const build = [
+    `Icon set: ${src.title} v${src.version} (${src.license})`,
+    `Symbol: ${item.symbol}`,
+    `Template rev: ${item.rev}, last updated ${item.updated}`,
+    `Status: ${item.status}${item.flag ? ` (${item.flag})` : ''}`,
+    ...item.notes.map(n => `Note: ${n}`),
+    `Site build: ${m.built.slice(0, 10)}, engine ${m.engine}, SwiftDraw ${m.swiftdraw}`,
+    `Page: ${location.origin}${location.pathname}#${src.id}/${item.name}`,
+  ].join('\n');
+  const q = new URLSearchParams({ template: 'icon-problem.yml', title: `[${src.id}] ${item.name}: `, set: src.title, icon: item.name, build });
+  return `${REPO}/issues/new?${q}`;
+}
+
+/* ---------- draggable divider between the icon list and the preview ---------- */
+const SIDE_KEY = 'symbolmaker.sideWidth', SIDE_MIN = 220, SIDE_MAX = 560, SIDE_DEFAULT = 300;
+function initResizer() {
+  const app = $('#app'), bar = $('#resizer');
+  const clamp = w => Math.max(SIDE_MIN, Math.min(Math.min(SIDE_MAX, innerWidth - 360), Math.round(w)));
+  const set = (w, save = true) => {
+    w = clamp(w);
+    app.style.setProperty('--side', w + 'px');
+    bar.setAttribute('aria-valuenow', String(w));
+    if (save) { try { localStorage.setItem(SIDE_KEY, String(w)); } catch { /* storage unavailable: just not remembered */ } }
+    return w;
+  };
+  let saved = SIDE_DEFAULT;
+  try { saved = Number(localStorage.getItem(SIDE_KEY)) || SIDE_DEFAULT; } catch { /* ignore */ }
+  set(saved, false);
+  bar.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); bar.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
+    const move = ev => set(ev.clientX - app.getBoundingClientRect().left, false);
+    const up = ev => {
+      bar.releasePointerCapture(ev.pointerId); document.body.classList.remove('resizing');
+      bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up);
+      set(ev.clientX - app.getBoundingClientRect().left); renderList();
+    };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+  });
+  bar.addEventListener('keydown', e => {
+    const cur = Number(bar.getAttribute('aria-valuenow')), step = e.shiftKey ? 64 : 16;
+    const next = { ArrowLeft: cur - step, ArrowRight: cur + step, Home: SIDE_MIN, End: SIDE_MAX }[e.key];
+    if (next === undefined) return;
+    e.preventDefault(); set(next);
+  });
+  bar.addEventListener('dblclick', () => { set(SIDE_DEFAULT); renderList(); });
+  addEventListener('resize', () => set(Number(bar.getAttribute('aria-valuenow')), false));    // keep it inside the window
 }
 
 /* ---------- sources ---------- */
@@ -137,7 +192,7 @@ async function useSource(id, { keepSearch = false } = {}) {
   link.href = `${src.id}/LICENSE.txt`; link.textContent = `${src.title} license (${src.license})`; link.hidden = false;
   $('#masters').hidden = true; $('#empty').hidden = false; $('#title').textContent = 'Symbol Maker';
   $('#badge').hidden = true; showNotes([], 'variable');
-  for (const b of ['#dl-svg', '#dl-zip', '#symbol-line']) $(b).hidden = true;
+  for (const b of ['#dl-svg', '#dl-zip', '#symbol-line', '#report']) $(b).hidden = true;
   filterList();
 }
 function parseHash() {
@@ -153,6 +208,9 @@ async function boot() {
   const m = state.meta;
   $('#source').replaceChildren(...m.sources.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: `${s.title} (${s.count})` })));
   $('#build-info').textContent = `${m.sources.map(s => `${s.title} v${s.version}`).join(', ')}. Converted with SwiftDraw ${m.swiftdraw} at Apple's weights (Ultralight ${m.weights.ultralight.toFixed(2)}×, Black ${m.weights.black.toFixed(2)}×). Built ${m.built.slice(0, 10)}.`;
+  $('#year').textContent = String(new Date(m.built).getFullYear());
+  $('#build-line').textContent = `Built ${m.built.slice(0, 10)} · engine ${m.engine} · SwiftDraw ${m.swiftdraw}`;
+  initResizer();
   const want = parseHash();
   await useSource(want.id);
   $('#source').addEventListener('change', e => { history.replaceState(null, '', '#' + e.target.value); useSource(e.target.value); });

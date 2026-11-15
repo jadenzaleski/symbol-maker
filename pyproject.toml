@@ -1,0 +1,16 @@
+[project]
+name = "symbol-maker"
+version = "0.1.0"
+description = "Icon sets (Lucide, Tabler, Heroicons, Iconoir, Sidekickicons) as ready-to-use SF Symbols templates, built into a static site."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+# Standard library only: nothing to install. SwiftDraw (`brew install swiftdraw`) is a separate macOS tool.
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["symbolmaker*"]

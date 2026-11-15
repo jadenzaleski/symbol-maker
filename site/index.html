@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="site.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app" id="app">
     <aside class="sidebar" aria-label="Icons">
       <section class="side-list">
         <label class="caption" for="source">Icon set</label>
@@ -26,12 +26,16 @@
       </section>
     </aside>
 
+    <div id="resizer" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the icon list"
+         aria-valuemin="220" aria-valuemax="560" aria-valuenow="300" tabindex="0" title="Drag to resize (double-click to reset)"></div>
+
     <main class="stage" aria-label="Preview">
       <header class="toolbar">
         <h1 id="title">Symbol Maker</h1>
         <span id="badge" class="badge" hidden></span>
         <span class="spacer"></span>
         <a id="dl-svg" class="btn" hidden download><span class="ico i-download" aria-hidden="true"></span> Download .svg</a>
+        <a id="report" class="btn" hidden target="_blank" rel="noopener" title="Open a GitHub issue for this icon, filled in for you"><span class="ico i-flag" aria-hidden="true"></span> Report a problem</a>
         <a id="dl-zip" class="btn primary" hidden download><span class="ico i-package" aria-hidden="true"></span> Download .symbolset</a>
       </header>
       <div id="banner" class="banner" role="status" hidden></div>
@@ -50,6 +54,15 @@
         <a id="license-link" href="#" hidden>License</a>
         <a href="ui/LICENSE.txt" title="The icons used by this page itself">Page icons: Lucide (ISC)</a>
       </footer>
+      <div class="legal">
+        <span>© <span id="year">2026</span> Jaden Zaleski</span>
+        <span aria-hidden="true">·</span>
+        <span>Code under <a href="https://github.com/jadenzaleski/symbol-maker/blob/master/LICENSE" target="_blank" rel="noopener">GPL-3.0</a></span>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/jadenzaleski/symbol-maker" target="_blank" rel="noopener"><span class="ico i-external" aria-hidden="true"></span> GitHub</a>
+        <span class="spacer"></span>
+        <span id="build-line" class="muted"></span>
+      </div>
     </main>
   </div>
   <script src="site.js"></script>
