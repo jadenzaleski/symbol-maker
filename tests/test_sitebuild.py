@@ -336,6 +336,13 @@ class RevisionTests(unittest.TestCase):
         self.assertRegex(d['engine'], r'^[0-9a-f]{8}$')
 
 
+class WorkDirTests(unittest.TestCase):
+    def test_the_temporary_folder_stays_unsynced_when_the_output_is(self):
+        self.assertEqual(sitebuild.work_dir(Path('/x/dist')).name, 'dist.building')
+        self.assertEqual(sitebuild.work_dir(Path('/x/dist.nosync')).name, 'dist.building.nosync')
+        self.assertEqual(sitebuild.work_dir(Path('/x/dist.nosync')).parent, Path('/x'))
+
+
 class FingerprintTests(unittest.TestCase):
     def test_depends_on_swiftdraw_version_and_is_stable(self):
         a = sitebuild.engine_fingerprint('0.29.0')

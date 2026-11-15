@@ -230,7 +230,7 @@ def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_
     out = Path(out)
     reporter = reporter or NullReporter()
     today = today or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
-    work = out.parent / (out.name + '.building')
+    work = work_dir(out)
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     try:
@@ -258,6 +258,14 @@ def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_
         for source_id, entries in to_cache.items():
             cache.save(source_id, entries)
     return summary
+
+
+def work_dir(out):
+    """Where a build is assembled before it replaces `out`: next to it, and unsynced if `out` is (iCloud)."""
+    out = Path(out)
+    if out.name.endswith('.nosync'):
+        return out.parent / (out.name[:-len('.nosync')] + '.building.nosync')
+    return out.parent / (out.name + '.building')
 
 
 def make_preview_server(directory, port=8000):

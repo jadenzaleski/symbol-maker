@@ -1,11 +1,12 @@
 # the real .git folder lives in .git.nosync so iCloud does not sync it
 .git.nosync/
 
-# build output
+# build output (and iCloud's conflict copies of it, e.g. "dist 2")
 /dist/
+/dist *
 /dist.building/
 /dist.nosync/
-/dist.nosync.building/
+/dist.building.nosync/
 /build-cache.nosync/
 
 # Python / macOS

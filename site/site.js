@@ -188,12 +188,19 @@ async function useSource(id, { keepSearch = false } = {}) {
   state.onlyProblems = false; $('#problems').checked = false;
   $('#problems-label').hidden = bad === 0;
   $('#problems-text').textContent = `Show only icons with problems (${bad})`;
-  const link = $('#license-link');
-  link.href = `${src.id}/LICENSE.txt`; link.textContent = `${src.title} license (${src.license})`; link.hidden = false;
+  renderLicenses(src);
   $('#masters').hidden = true; $('#empty').hidden = false; $('#title').textContent = 'Symbol Maker';
   $('#badge').hidden = true; showNotes([], 'variable');
   for (const b of ['#dl-svg', '#dl-zip', '#symbol-line', '#report']) $(b).hidden = true;
   filterList();
+}
+// Which licenses apply: the icon set's own, and Lucide's for the icons the page itself uses (the same notice when Lucide
+// is the selected set, so then it is one link).
+function renderLicenses(src) {
+  const link = (href, text) => Object.assign(document.createElement('a'), { href, textContent: text });
+  const host = $('#licenses');
+  if (src.id === 'lucide') { host.replaceChildren('Icons and page icons: ', link('lucide/LICENSE.txt', 'Lucide (ISC)')); return; }
+  host.replaceChildren('Icons: ', link(`${src.id}/LICENSE.txt`, `${src.title} (${src.license})`), ' · Page icons: ', link('ui/LICENSE.txt', 'Lucide (ISC)'));
 }
 function parseHash() {
   const [a, b] = decodeURIComponent(location.hash.slice(1)).split('/');

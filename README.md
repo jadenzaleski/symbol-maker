@@ -34,11 +34,11 @@ You need a Mac with Python 3 and [SwiftDraw](https://github.com/swhitty/SwiftDra
 needed only for one test that compiles a sample catalog with `actool`.
 
 ```sh
-./ci.sh                  # run the tests, then build the site into ./dist
+./ci.sh                  # run the tests, then build the site into ./dist.nosync
 ./ci.sh --serve          # ... and preview it at http://127.0.0.1:8000
 ./ci.sh --limit 50       # only convert the first 50 icons of each set (quick)
 ./ci.sh --only tabler    # only build some sets (comma-separated)
-OUT=somewhere ./ci.sh    # write the site somewhere other than ./dist
+OUT=somewhere ./ci.sh    # write the site somewhere other than ./dist.nosync
 ```
 
 Conversions are cached in `./build-cache.nosync` (or `$CACHE`): an icon is converted again only if its SVG, the engine
