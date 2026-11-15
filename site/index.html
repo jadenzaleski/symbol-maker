@@ -4,16 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Symbol Maker: Lucide icons as SF Symbols templates</title>
-  <meta name="description" content="Every Lucide icon as a ready-to-import SF Symbols template with Ultralight, Regular and Black weights.">
+  <title>Symbol Maker: icons as SF Symbols templates</title>
+  <meta name="description" content="Lucide, Tabler, Heroicons and Sidekickicons as ready-to-import SF Symbols templates with Ultralight, Regular and Black weights.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="site.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" aria-label="Icons">
       <section class="side-list">
-        <label class="caption" for="search">Lucide <span id="lver" class="muted"></span> <span id="count" class="muted"></span></label>
-        <input id="search" type="search" placeholder="Search icons" autocomplete="off" spellcheck="false">
+        <label class="caption" for="source">Icon set</label>
+        <div class="select-wrap"><select id="source" aria-label="Icon set"></select></div>
+        <label class="caption" for="search">Icons <span id="count" class="muted"></span></label>
+        <div class="search-wrap"><input id="search" type="search" placeholder="Search icons" autocomplete="off" spellcheck="false"></div>
+        <label class="check" id="problems-label" hidden><input id="problems" type="checkbox"> <span id="problems-text"></span></label>
         <div id="list" class="list" role="listbox" aria-label="Lucide icons" tabindex="0">
           <div id="list-spacer" class="list-spacer"><div id="list-rows" class="list-rows"></div></div>
         </div>
@@ -25,13 +31,13 @@
         <h1 id="title">Symbol Maker</h1>
         <span id="badge" class="badge" hidden></span>
         <span class="spacer"></span>
-        <a id="dl-svg" class="btn" hidden download>Download .svg</a>
-        <a id="dl-zip" class="btn primary" hidden download>Download .symbolset</a>
+        <a id="dl-svg" class="btn" hidden download><span class="ico i-download" aria-hidden="true"></span> Download .svg</a>
+        <a id="dl-zip" class="btn primary" hidden download><span class="ico i-package" aria-hidden="true"></span> Download .symbolset</a>
       </header>
       <div id="banner" class="banner" role="status" hidden></div>
       <div id="empty" class="empty">
         <div class="intro">
-          <h2>Lucide icons as SF Symbols templates</h2>
+          <h2>Icons as SF Symbols templates</h2>
           <p>Pick an icon. Each one is converted with Ultralight, Regular and Black weights that line up like Apple's, so it follows font weight and Bold Text.</p>
           <p><strong>.svg</strong> opens in the SF Symbols app (or drag it onto a Symbol Image Set in Xcode). <strong>.symbolset</strong> is a folder for an asset catalog.</p>
           <p class="muted" id="build-info"></p>
@@ -41,7 +47,8 @@
       <footer class="foot">
         <span id="symbol-line" class="muted" hidden></span>
         <span class="spacer"></span>
-        <a href="LICENSE-lucide.txt">Lucide license (ISC)</a>
+        <a id="license-link" href="#" hidden>License</a>
+        <a href="ui/LICENSE.txt" title="The icons used by this page itself">Page icons: Lucide (ISC)</a>
       </footer>
     </main>
   </div>

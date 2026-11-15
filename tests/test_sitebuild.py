@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import shutil
@@ -11,55 +12,52 @@ from symbolmaker import sitebuild
 from symbolmaker.engine.convert import find_swiftdraw
 from symbolmaker.engine.layers import LayerAssignment, read_assignments
 from symbolmaker.engine.pipeline import MakeResult
+from symbolmaker.sources import SOURCES
 
 ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOUSE = (ROOT / 'tests/fixtures/export/lucide.house.svg').read_text()
-RELEASE = {'version': '9.9.9', 'license': 'ISC License\nCopyright (c) Lucide',
-           'names': ['a-arrow-down', 'heart', 'house'],
-           'svgs': {n: f'<svg class="lucide lucide-{n}"/>' for n in ('a-arrow-down', 'heart', 'house')}}
+LUCIDE, TABLER = SOURCES['lucide'], SOURCES['tabler']
+
+
+def release(names=('a-arrow-down', 'heart', 'house'), version='9.9.9', license_name='ISC', license_text='ISC License\nCopyright (c) Lucide'):
+    return {'version': version, 'license': license_text, 'license_name': license_name, 'names': list(names),
+            'svgs': {n: f'<svg class="icon-{n}"/>' for n in names}}
 
 
 def fake_convert(svg):
     return MakeResult(HOUSE, 'variable', ['a note'], [LayerAssignment(0, 'secondary'), LayerAssignment(1, 'primary')])
 
 
-class SymbolNameTests(unittest.TestCase):
-    def test_hyphens_become_dots_with_a_lucide_prefix(self):
-        self.assertEqual(sitebuild.symbol_name('house'), 'lucide.house')
-        self.assertEqual(sitebuild.symbol_name('a-arrow-down'), 'lucide.a.arrow.down')
-        self.assertEqual(sitebuild.symbol_name('grid-3x3'), 'lucide.grid.3x3')
-
-
 class StampTests(unittest.TestCase):
     def test_the_license_comment_is_added_and_the_template_still_reads(self):
-        out = sitebuild.stamp(HOUSE, 'house', '9.9.9')
-        self.assertIn('Lucide', out.split('<svg', 1)[0])
-        self.assertIn('ISC', out.split('<svg', 1)[0])
+        out = sitebuild.stamp(HOUSE, LUCIDE, 'house', '9.9.9', 'ISC')
+        head = out.split('<svg', 1)[0]
+        self.assertIn('Lucide', head)
+        self.assertIn('ISC', head)
+        self.assertIn('LICENSE-lucide.txt', head)
         self.assertTrue(out.startswith('<?xml'))
         ET.fromstring(out)                                           # still well-formed XML
         self.assertEqual(read_assignments(out), read_assignments(HOUSE))
 
     def test_the_comment_never_contains_a_double_hyphen(self):
-        comment = sitebuild.stamp(HOUSE, 'a-arrow-down', '1.2.3').split('<svg', 1)[0]
-        body = comment.split('<!--', 1)[1].rsplit('-->', 1)[0]
-        self.assertNotIn('--', body)
+        head = sitebuild.stamp(HOUSE, TABLER, 'a-arrow-down', '1.2.3', 'MIT').split('<svg', 1)[0]
+        self.assertNotIn('--', head.split('<!--', 1)[1].rsplit('-->', 1)[0])
+        evil = sitebuild.stamp(HOUSE, TABLER, 'x', '1.0.0', 'A--B').split('<svg', 1)[0]
+        self.assertNotIn('--', evil.split('<!--', 1)[1].rsplit('-->', 1)[0])
 
 
 class ZipTests(unittest.TestCase):
     def test_the_zip_holds_a_symbolset_folder_and_the_license_beside_it(self):
-        data = sitebuild.symbolset_zip('lucide.house', HOUSE, 'ISC License text')
-        import io
-        z = zipfile.ZipFile(io.BytesIO(data))
-        self.assertEqual(sorted(z.namelist()), ['LICENSE-lucide.txt', 'lucide.house.symbolset/Contents.json',
-                                                'lucide.house.symbolset/lucide.house.svg'])
-        self.assertEqual(z.read('lucide.house.symbolset/lucide.house.svg').decode(), HOUSE)
-        self.assertEqual(json.loads(z.read('lucide.house.symbolset/Contents.json'))['symbols'][0]['filename'], 'lucide.house.svg')
-        self.assertEqual(z.read('LICENSE-lucide.txt').decode(), 'ISC License text')
+        z = zipfile.ZipFile(io.BytesIO(sitebuild.symbolset_zip('tabler.home', HOUSE, 'MIT text', 'LICENSE-tabler.txt')))
+        self.assertEqual(sorted(z.namelist()), ['LICENSE-tabler.txt', 'tabler.home.symbolset/Contents.json',
+                                                'tabler.home.symbolset/tabler.home.svg'])
+        self.assertEqual(z.read('tabler.home.symbolset/tabler.home.svg').decode(), HOUSE)
+        self.assertEqual(json.loads(z.read('tabler.home.symbolset/Contents.json'))['symbols'][0]['filename'], 'tabler.home.svg')
+        self.assertEqual(z.read('LICENSE-tabler.txt').decode(), 'MIT text')
 
     def test_the_same_input_gives_the_same_bytes(self):
-        a = sitebuild.symbolset_zip('lucide.house', HOUSE, 'x')
-        b = sitebuild.symbolset_zip('lucide.house', HOUSE, 'x')
-        self.assertEqual(a, b)
+        a = sitebuild.symbolset_zip('lucide.house', HOUSE, 'x', 'LICENSE-lucide.txt')
+        self.assertEqual(a, sitebuild.symbolset_zip('lucide.house', HOUSE, 'x', 'LICENSE-lucide.txt'))
 
 
 class BuildTests(unittest.TestCase):
@@ -67,25 +65,34 @@ class BuildTests(unittest.TestCase):
         self.out = Path(tempfile.mkdtemp()) / 'dist'
         self.addCleanup(shutil.rmtree, self.out.parent, True)
 
-    def build(self, **kw):
+    def build(self, items=None, **kw):
         kw.setdefault('convert', fake_convert)
-        return sitebuild.build(self.out, RELEASE, swiftdraw='0.29.0', **kw)
+        return sitebuild.build(self.out, items or [(LUCIDE, release())], swiftdraw='0.29.0', **kw)
 
-    def test_writes_every_artifact_for_every_icon(self):
+    def test_writes_every_artifact_for_every_icon_in_a_folder_per_source(self):
         self.build()
         for sym, icon in (('lucide.house', 'house'), ('lucide.heart', 'heart'), ('lucide.a.arrow.down', 'a-arrow-down')):
-            self.assertTrue((self.out / 'templates' / f'{sym}.svg').read_text().startswith('<?xml'))
-            self.assertEqual(set(json.loads((self.out / 'guides' / f'{sym}.json').read_text())), {'ultralight', 'regular', 'black'})
-            self.assertTrue(zipfile.is_zipfile(self.out / 'zips' / f'{sym}.symbolset.zip'))
-            self.assertIn(f'lucide-{icon}', (self.out / 'icons' / f'{icon}.svg').read_text())
-        self.assertEqual((self.out / 'LICENSE-lucide.txt').read_text(), RELEASE['license'])
+            self.assertTrue((self.out / 'lucide/templates' / f'{sym}.svg').read_text().startswith('<?xml'))
+            self.assertEqual(set(json.loads((self.out / 'lucide/guides' / f'{sym}.json').read_text())), {'ultralight', 'regular', 'black'})
+            self.assertTrue(zipfile.is_zipfile(self.out / 'lucide/zips' / f'{sym}.symbolset.zip'))
+            self.assertIn(f'icon-{icon}', (self.out / 'lucide/icons' / f'{icon}.svg').read_text())
+        self.assertEqual((self.out / 'lucide/LICENSE.txt').read_text(), 'ISC License\nCopyright (c) Lucide')
         self.assertTrue((self.out / '.nojekyll').exists())
 
-    def test_index_describes_the_build_and_each_icon(self):
+    def test_sources_json_lists_the_sources_and_the_build(self):
+        self.build([(LUCIDE, release()), (TABLER, release(['home', 'star'], version='3.52.0', license_name='MIT', license_text='MIT License'))])
+        d = json.loads((self.out / 'sources.json').read_text())
+        self.assertEqual((d['swiftdraw'], d['weights']), ('0.29.0', {'ultralight': 0.30, 'black': 1.90}))
+        self.assertEqual([s['id'] for s in d['sources']], ['lucide', 'tabler'])
+        tabler = d['sources'][1]
+        self.assertEqual((tabler['title'], tabler['version'], tabler['license'], tabler['count'], tabler['homepage']),
+                         ('Tabler Icons', '3.52.0', 'MIT', 2, 'https://tabler.io/icons'))
+        self.assertTrue((self.out / 'tabler/templates/tabler.home.svg').exists())
+        self.assertTrue((self.out / 'tabler/LICENSE.txt').read_text().startswith('MIT'))
+
+    def test_each_source_index_describes_its_icons(self):
         self.build()
-        d = json.loads((self.out / 'index.json').read_text())
-        self.assertEqual((d['library'], d['version'], d['swiftdraw']), ('Lucide', '9.9.9', '0.29.0'))
-        self.assertEqual(d['weights'], {'ultralight': 0.30, 'black': 1.90})
+        d = json.loads((self.out / 'lucide/index.json').read_text())
         self.assertEqual([i['name'] for i in d['icons']], ['a-arrow-down', 'heart', 'house'])
         first = d['icons'][0]
         self.assertEqual((first['symbol'], first['status'], first['layers'], first['notes']),
@@ -99,23 +106,46 @@ class BuildTests(unittest.TestCase):
         self.build(site_dir=site)
         self.assertEqual((self.out / 'index.html').read_text(), '<html>')
 
+    def test_icons_are_flagged_as_problem_or_note_in_the_index(self):
+        def convert(svg):
+            r = fake_convert(svg)
+            if 'icon-heart' in svg:
+                r.problem = True                       # will not follow weight properly
+            elif 'icon-house' in svg:
+                r.notes = []                           # nothing to say
+            return r
+        self.build(convert=convert)
+        icons = {i['name']: i for i in json.loads((self.out / 'lucide/index.json').read_text())['icons']}
+        self.assertEqual(icons['heart']['flag'], 'problem')
+        self.assertEqual(icons['a-arrow-down']['flag'], 'note')       # it has a note (fake_convert says 'a note')
+        self.assertNotIn('flag', icons['house'])
+
+    def test_the_page_assets_in_subfolders_are_copied_too(self):
+        site = self.out.parent / 'site'
+        (site / 'ui').mkdir(parents=True)
+        (site / 'index.html').write_text('<html>')
+        (site / 'ui' / 'download.svg').write_text('<svg/>')
+        self.build(site_dir=site)
+        self.assertEqual((self.out / 'ui' / 'download.svg').read_text(), '<svg/>')
+
     def test_one_failing_icon_is_recorded_and_skipped(self):
         def convert(svg):
-            if 'lucide-heart' in svg:
+            if 'icon-heart' in svg:
                 raise ValueError('cannot convert')
             return fake_convert(svg)
         s = self.build(convert=convert, max_failed=0.5)
-        d = json.loads((self.out / 'index.json').read_text())
+        d = json.loads((self.out / 'lucide/index.json').read_text())
         self.assertEqual(d['failed'], [{'name': 'heart', 'error': 'cannot convert'}])
         self.assertEqual([i['name'] for i in d['icons']], ['a-arrow-down', 'house'])
-        self.assertFalse((self.out / 'templates' / 'lucide.heart.svg').exists())
-        self.assertEqual(s['failed'], 1)
+        self.assertFalse((self.out / 'lucide/templates/lucide.heart.svg').exists())
+        self.assertEqual(s['lucide'], {'icons': 2, 'failed': 1})
 
-    def test_too_many_failures_stop_the_build_before_anything_is_published(self):
+    def test_too_many_failures_in_one_source_stop_the_build_before_anything_is_published(self):
         def convert(svg):
             raise ValueError('nope')
-        with self.assertRaises(sitebuild.BuildError):
+        with self.assertRaises(sitebuild.BuildError) as cm:
             self.build(convert=convert, max_failed=0.02)
+        self.assertIn('lucide', str(cm.exception))
         self.assertFalse(self.out.exists())
 
     def test_an_existing_output_folder_is_replaced_not_merged(self):
@@ -123,6 +153,11 @@ class BuildTests(unittest.TestCase):
         (self.out / 'stale.txt').write_text('old')
         self.build()
         self.assertFalse((self.out / 'stale.txt').exists())
+
+    def test_limit_applies_to_each_source(self):
+        self.build([(LUCIDE, release()), (TABLER, release(['home', 'star', 'x']))], limit=2)
+        self.assertEqual(len(json.loads((self.out / 'lucide/index.json').read_text())['icons']), 2)
+        self.assertEqual(len(json.loads((self.out / 'tabler/index.json').read_text())['icons']), 2)
 
 
 class ServeTests(unittest.TestCase):
@@ -142,10 +177,26 @@ class ServeTests(unittest.TestCase):
 
 @unittest.skipUnless(find_swiftdraw(), 'swiftdraw not installed')
 class RealConversionTests(unittest.TestCase):
+    ICONS = ('heart', 'circle', 'house', 'info')
+
+    def rel(self):
+        names = list(self.ICONS)
+        return {'version': '1.0.0', 'license': 'x', 'license_name': 'ISC', 'names': names,
+                'svgs': {n: (ROOT / f'tests/fixtures/lucide/{n}.svg').read_text() for n in names}}
+
     def test_default_conversion_uses_apple_weights_and_produces_a_variable_template(self):
-        svg = (ROOT / 'tests/fixtures/lucide/heart.svg').read_text()
-        r = sitebuild.convert_apple(svg)
+        r = sitebuild.convert_apple((ROOT / 'tests/fixtures/lucide/heart.svg').read_text())
         self.assertEqual(r.status, 'variable')
+
+    def test_building_with_several_processes_gives_the_same_templates_as_one(self):
+        outs = []
+        for jobs in (1, 2):
+            out = Path(tempfile.mkdtemp()) / 'dist'
+            self.addCleanup(shutil.rmtree, out.parent, True)
+            sitebuild.build(out, [(LUCIDE, self.rel())], jobs=jobs, convert=sitebuild.convert_apple)
+            outs.append({p.name: p.read_text() for p in sorted((out / 'lucide/templates').iterdir())})
+        self.assertEqual(outs[0], outs[1])
+        self.assertEqual(len(outs[0]), 4)
 
 
 if __name__ == '__main__':

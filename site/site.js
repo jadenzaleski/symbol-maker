@@ -8,7 +8,7 @@ const ROW = 26;
 const WEIGHTS = [['ultralight', 'Ultralight'], ['regular', 'Regular'], ['black', 'Black']];
 const BADGES = { variable: ['Variable weights', ''], 'single-weight': ['Single weight', 'warn'], 'identical-masters': ['No weight change', 'warn'] };
 
-const state = { index: null, items: [], picked: null, seq: 0 };
+const state = { meta: null, source: null, index: null, indexes: {}, items: [], picked: null, seq: 0, onlyProblems: false };
 
 /* ---------- data ---------- */
 async function getJSON(path) {
@@ -20,7 +20,8 @@ async function getJSON(path) {
 /* ---------- list (virtualized: 2,000+ rows) ---------- */
 function filterList() {
   const q = $('#search').value.trim().toLowerCase().replace(/[\s.]+/g, '-');
-  const all = state.index.icons;
+  let all = state.index ? state.index.icons : [];
+  if (state.onlyProblems) all = all.filter(i => i.flag === 'problem');
   state.items = q ? all.filter(i => i.name.includes(q)) : all;
   $('#count').textContent = String(state.items.length);
   $('#list').scrollTop = 0;
@@ -34,10 +35,17 @@ function renderList() {
   rows.style.transform = `translateY(${start * ROW}px)`;
   const frag = document.createDocumentFragment();
   for (let i = start; i < end; i++) {
-    const n = state.items[i].name;
+    const item = state.items[i], n = item.name;
     const d = document.createElement('div');
     d.className = 'row'; d.setAttribute('role', 'option'); d.dataset.name = n; d.textContent = n;
-    d.style.setProperty('--icon', `url("icons/${n}.svg")`);
+    if (item.flag) {                                   // a marker, with the reason on hover and for screen readers
+      const f = document.createElement('span');
+      f.className = 'flag ' + item.flag; f.setAttribute('aria-hidden', 'true');
+      d.append(f);
+      d.title = item.notes.join(' ');
+      d.setAttribute('aria-label', `${n}: ${item.flag === 'problem' ? 'problem. ' : 'note. '}${item.notes.join(' ')}`);
+    }
+    d.style.setProperty('--icon', `url("${state.source.id}/icons/${n}.svg")`);
     d.setAttribute('aria-selected', String(n === state.picked));
     frag.appendChild(d);
   }
@@ -85,11 +93,12 @@ async function pick(name, { scroll = true } = {}) {
   const item = state.index.icons.find(i => i.name === name);
   if (!item) return;
   state.picked = name;
-  if (location.hash.slice(1) !== name) history.replaceState(null, '', '#' + name);
+  const id = state.source.id, hash = `#${id}/${name}`;
+  if (location.hash !== hash) history.replaceState(null, '', hash);
   renderList(); if (scroll) scrollToPicked();
   const mine = ++state.seq;
   let guides;
-  try { guides = await getJSON(`guides/${item.symbol}.json`); }
+  try { guides = await getJSON(`${id}/guides/${item.symbol}.json`); }
   catch { showNotes(['Could not load this icon. Check your connection and try again.'], 'error'); return; }
   if (mine !== state.seq) return;                      // a newer pick is loading
   $('#title').textContent = name;
@@ -104,20 +113,51 @@ async function pick(name, { scroll = true } = {}) {
     return card;
   }));
   const svg = $('#dl-svg'), zip = $('#dl-zip');
-  svg.href = `templates/${item.symbol}.svg`; svg.setAttribute('download', `${item.symbol}.svg`); svg.hidden = false;
-  zip.href = `zips/${item.symbol}.symbolset.zip`; zip.setAttribute('download', `${item.symbol}.symbolset.zip`); zip.hidden = false;
+  svg.href = `${id}/templates/${item.symbol}.svg`; svg.setAttribute('download', `${item.symbol}.svg`); svg.hidden = false;
+  zip.href = `${id}/zips/${item.symbol}.symbolset.zip`; zip.setAttribute('download', `${item.symbol}.symbolset.zip`); zip.hidden = false;
   const line = $('#symbol-line'); line.textContent = item.symbol; line.hidden = false;
+}
+
+/* ---------- sources ---------- */
+async function useSource(id, { keepSearch = false } = {}) {
+  const src = state.meta.sources.find(x => x.id === id) || state.meta.sources[0];
+  state.source = src; state.picked = null; state.seq++;
+  $('#source').value = src.id;
+  if (!keepSearch) $('#search').value = '';
+  state.index = state.indexes[src.id];
+  if (!state.index) {
+    try { state.index = state.indexes[src.id] = await getJSON(`${src.id}/index.json`); }
+    catch { showNotes([`Could not load the ${src.title} icon list.`], 'error'); return; }
+  }
+  const bad = state.index.icons.filter(i => i.flag === 'problem').length;
+  state.onlyProblems = false; $('#problems').checked = false;
+  $('#problems-label').hidden = bad === 0;
+  $('#problems-text').textContent = `Show only icons with problems (${bad})`;
+  const link = $('#license-link');
+  link.href = `${src.id}/LICENSE.txt`; link.textContent = `${src.title} license (${src.license})`; link.hidden = false;
+  $('#masters').hidden = true; $('#empty').hidden = false; $('#title').textContent = 'Symbol Maker';
+  $('#badge').hidden = true; showNotes([], 'variable');
+  for (const b of ['#dl-svg', '#dl-zip', '#symbol-line']) $(b).hidden = true;
+  filterList();
+}
+function parseHash() {
+  const [a, b] = decodeURIComponent(location.hash.slice(1)).split('/');
+  if (b === undefined) return { id: 'lucide', name: a || null };          // older links: #house
+  return { id: a, name: b || null };
 }
 
 /* ---------- boot ---------- */
 async function boot() {
-  try { state.index = await getJSON('index.json'); }
+  try { state.meta = await getJSON('sources.json'); }
   catch { showNotes(['Could not load the icon list.'], 'error'); return; }
-  const ix = state.index;
-  $('#lver').textContent = 'v' + ix.version;
-  $('#build-info').textContent = `Lucide v${ix.version}, converted with SwiftDraw ${ix.swiftdraw} at Apple's weights (Ultralight ${ix.weights.ultralight.toFixed(2)}×, Black ${ix.weights.black.toFixed(2)}×). Built ${ix.built.slice(0, 10)}.`;
-  filterList();
+  const m = state.meta;
+  $('#source').replaceChildren(...m.sources.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: `${s.title} (${s.count})` })));
+  $('#build-info').textContent = `${m.sources.map(s => `${s.title} v${s.version}`).join(', ')}. Converted with SwiftDraw ${m.swiftdraw} at Apple's weights (Ultralight ${m.weights.ultralight.toFixed(2)}×, Black ${m.weights.black.toFixed(2)}×). Built ${m.built.slice(0, 10)}.`;
+  const want = parseHash();
+  await useSource(want.id);
+  $('#source').addEventListener('change', e => { history.replaceState(null, '', '#' + e.target.value); useSource(e.target.value); });
   $('#search').addEventListener('input', filterList);
+  $('#problems').addEventListener('change', e => { state.onlyProblems = e.target.checked; filterList(); });
   $('#list').addEventListener('scroll', renderList, { passive: true });
   $('#list').addEventListener('click', e => { const r = e.target.closest('.row'); if (r) pick(r.dataset.name, { scroll: false }); });
   $('#list').addEventListener('keydown', e => {
@@ -128,7 +168,11 @@ async function boot() {
     if (state.items[i]) pick(state.items[i].name);
   });
   addEventListener('resize', renderList);
-  addEventListener('hashchange', () => { const n = location.hash.slice(1); if (n && n !== state.picked) pick(n); });
-  if (location.hash.length > 1) pick(decodeURIComponent(location.hash.slice(1)));
+  addEventListener('hashchange', async () => {
+    const h = parseHash();
+    if (h.id !== state.source.id) await useSource(h.id);
+    if (h.name && h.name !== state.picked) pick(h.name);
+  });
+  if (want.name) pick(want.name);
 }
 boot();

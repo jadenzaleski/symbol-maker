@@ -61,7 +61,11 @@ class PipelineTests(unittest.TestCase):
         with mock.patch.object(pipeline, 'match_weights', return_value=(None, 'x went wrong')):
             r = make_template(lucide('baby'))
         self.assertEqual(r.status, 'single-weight')
-        self.assertTrue(any('x went wrong' in n for n in r.notes))
+        note = ' '.join(r.notes)
+        self.assertIn('single-weight', note)
+        self.assertIn('bold text', note)
+        self.assertNotIn('Error', note)                     # no Python error text on the page
+        self.assertNotIn('x went wrong', note)
         self.assertTrue(masters_match(r.template))
 
     def test_regular_stroke_is_reported_in_grid_units(self):
@@ -74,11 +78,55 @@ class PipelineTests(unittest.TestCase):
         r = make_template(f'<svg {NS} viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="black"/></svg>')
         self.assertIsNone(r.stroke)
 
-    def test_unalignable_icon_stays_variable_but_warns(self):
-        # accessibility: raw masters have equal verbs but their nodes cannot be aligned by the weight matcher
-        r = make_template(lucide('accessibility'))
+    def test_a_dot_icon_is_variable_with_no_warning(self):
+        for name in ('dot', 'skull'):
+            r = make_template(lucide(name), 0.30, 1.90)
+            self.assertEqual((name, r.status, r.notes), (name, 'variable', []))
+
+    def test_black_is_lightened_only_as_far_as_needed_to_line_the_weights_up(self):
+        # donut's tight curves close up at Apple's Black (1.9x), which makes SwiftDraw's outline a different shape
+        r = make_template(lucide('donut'), 0.30, 1.90)
+        self.assertEqual(r.status, 'variable')
+        self.assertTrue(masters_match(r.template))
+        note = ' '.join(r.notes)
+        self.assertIn('Black', note)
+        self.assertIn('1.9', note)                                 # says what was asked for
+        self.assertNotIn('uneven', note)
+
+    def test_an_icon_that_lines_up_at_the_requested_weights_gets_no_note(self):
+        self.assertEqual(make_template(lucide('heart'), 0.30, 1.90).notes, [])
+
+    def test_the_fallback_never_makes_black_heavier_than_requested(self):
+        r = make_template(lucide('panda'), 0.30, 1.55)
+        self.assertEqual(r.status, 'variable')
+        self.assertNotIn('1.6', ' '.join(r.notes))
+
+    def test_unalignable_icon_stays_variable_but_warns_and_is_a_problem(self):
+        # the weights have the same segments but their nodes cannot be lined up by the matcher
+        with mock.patch.object(pipeline, 'match_weights', return_value=(None, 'x')), \
+                mock.patch.object(pipeline, 'signature_ok', return_value=True):
+            r = make_template(lucide('heart'))
         self.assertEqual(r.status, 'variable')
         self.assertTrue(any('uneven' in n for n in r.notes), r.notes)
+        self.assertNotIn('node-for-node', ' '.join(r.notes))
+        self.assertTrue(r.problem)
+
+    def test_single_weight_is_a_problem(self):
+        with mock.patch.object(pipeline, 'match_weights', return_value=(None, 'x went wrong')):
+            r = make_template(lucide('baby'))
+        self.assertEqual(r.status, 'single-weight')
+        self.assertTrue(r.problem)
+
+    def test_a_clean_icon_and_a_lightened_black_are_not_problems(self):
+        self.assertFalse(make_template(lucide('heart'), 0.30, 1.90).problem)
+        r = make_template(lucide('donut'), 0.30, 1.90)
+        self.assertTrue(r.notes)
+        self.assertFalse(r.problem)
+
+    def test_a_fill_only_icon_is_a_problem_because_it_will_not_follow_weight(self):
+        r = make_template(f'<svg {NS} viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="black"/></svg>')
+        self.assertEqual(r.status, 'identical-masters')
+        self.assertTrue(r.problem)
 
     def test_aligned_icon_has_no_unevenness_warning(self):
         r = make_template(lucide('heart'))

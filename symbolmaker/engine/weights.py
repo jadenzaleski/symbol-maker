@@ -304,23 +304,86 @@ def masters_match(template_svg):
     return a == b == c
 
 
-def match_weights(template_svg):
-    """-> (matched_svg, None) or (None, reason). Retries with several alignment tolerances."""
+HOLE_MIN_AREA = 1.0     # a contour whose node polygon is smaller than this (template units squared) is a point
+
+
+def _collapses(contours_by_weight, k):
+    """True when contour k closes up (or turns inside out) in at least one weight."""
+    areas = []
+    for cs in contours_by_weight:
+        c = cs[k]
+        areas.append(s_area(c) if c[1] else 0.0)
+    if any(abs(a) < HOLE_MIN_AREA for a in areas):
+        return True
+    return len({a > 0 for a in areas}) > 1
+
+
+def drop_collapsing_holes(template_svg):
+    """Remove, from all three weights, an inner contour that collapses in one of them.
+
+    A stroked dot (Lucide draws one as a circle of radius 1 with a 2-wide stroke) has a real hole at Ultralight, a hole
+    that has shrunk to a single point at Regular, and a hole that has turned inside out at Black. A hole cannot appear
+    and vanish between weights, so the symbol could never be interpolated. Dropping the hole from every weight makes the
+    dot solid at all of them, which is what it looks like at Regular and Black anyway.
+
+    Only paths with the same number of contours in every weight are touched, and a path always keeps at least one."""
+    ws = ('Ultralight-S', 'Regular-S', 'Black-S')
+    gs = [re.search(GROUP % w, template_svg, re.S) for w in ws]
+    if not all(gs):
+        return template_svg
+    path = re.compile(r'(<path\b[^>]*?\sd=")([^"]+)(")')
+    ds = [[m.group(2) for m in path.finditer(g.group(2))] for g in gs]
+    if not (len(ds[0]) == len(ds[1]) == len(ds[2])):
+        return template_svg
+    out = template_svg
+    new_bodies = [g.group(2) for g in gs]
+    changed = False
+    for i in range(len(ds[0])):
+        cs = [parse(ds[w][i], 0) for w in range(3)]          # keep degenerate segments: a point must stay a contour
+        if not (len(cs[0]) == len(cs[1]) == len(cs[2])) or len(cs[0]) < 2:
+            continue
+        drop = [k for k in range(len(cs[0])) if _collapses(cs, k)]
+        if not drop or len(drop) == len(cs[0]):
+            continue
+        for w in range(3):
+            keep = [c for k, c in enumerate(cs[w]) if k not in drop]
+            ds[w][i] = to_d(keep)
+        changed = True
+    if not changed:
+        return template_svg
+    for w in range(3):
+        it = iter(ds[w])
+        body = path.sub(lambda m: m.group(1) + next(it) + m.group(3), gs[w].group(2))
+        out = out.replace(gs[w].group(0), gs[w].group(1) + body + gs[w].group(3), 1)
+    return out
+
+
+def match_weights(template_svg, tries=DMAX_TRIES):
+    """-> (matched_svg, None) or (None, reason). Retries with several alignment tolerances.
+
+    When the first three tolerances fail with the same error (e.g. the same node counts), the remaining ones would only
+    repeat it, so it stops there."""
     global DMAX
     last = 'weights could not be matched'
     if masters_match(template_svg):
         return template_svg, None
-    for dm in DMAX_TRIES:
+    errors = []
+    for dm in tries:
         DMAX = float(dm)
         try:
             new, err = process(template_svg)
         except Exception as e:   # geometry we cannot parse/align: report, never crash
             new, err = None, f'could not align weights ({e!r})'
+            errors.append(err)
+        else:
+            errors.append(None)
         if new is not None and signature_ok(new):   # what SF Symbols compares: the verbs actually emitted
             return new, None
         last = err or 'weights still differ after alignment'
         if err and 'contour' in err:
             break   # a contour appears/disappears between weights; no tolerance fixes that
+        if len(errors) >= 3 and errors[-1] is not None and len(set(errors[-3:])) == 1:
+            break
     return None, last
 
 
