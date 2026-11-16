@@ -4,7 +4,7 @@ description: Run the tests, then convert every icon set into ./dist.nosync (conv
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: '3.12'
     - name: Install SwiftDraw
@@ -13,7 +13,7 @@ runs:
     - name: Restore converted icons
       # Keyed by the engine code, so a change to it starts fresh; each run saves what it converted. The cache file also
       # records the engine and SwiftDraw versions it was made with and is ignored if they differ.
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: build-cache.nosync
         key: convert-${{ runner.os }}-${{ hashFiles('symbolmaker/engine/*.py') }}-${{ github.run_id }}
