@@ -336,6 +336,73 @@ class RevisionTests(unittest.TestCase):
         self.assertRegex(d['engine'], r'^[0-9a-f]{8}$')
 
 
+class FakeRun:
+    """Stands in for subprocess.run: answers `git rev-parse` and `git status` from a table."""
+    def __init__(self, head='a' * 40, dirty='', fail=False):
+        self.head, self.dirty, self.fail, self.calls = head, dirty, fail, []
+
+    def __call__(self, cmd, **kw):
+        self.calls.append(cmd)
+        if self.fail:
+            raise OSError('no git')
+        out = self.head if 'rev-parse' in cmd else self.dirty
+        return type('R', (), {'returncode': 0, 'stdout': out + '\n', 'stderr': ''})()
+
+
+class CommitTests(unittest.TestCase):
+    SHA = '0123456789abcdef0123456789abcdef01234567'
+
+    def test_the_action_names_the_commit_in_the_environment(self):
+        run = FakeRun()
+        self.assertEqual(sitebuild.build_commit({'GITHUB_SHA': self.SHA}, run), {'sha': self.SHA, 'dirty': False})
+        self.assertEqual(run.calls, [], 'git is not asked when the environment already knows')
+
+    def test_a_local_build_asks_git_and_notices_uncommitted_changes(self):
+        self.assertEqual(sitebuild.build_commit({}, FakeRun(head=self.SHA)), {'sha': self.SHA, 'dirty': False})
+        self.assertEqual(sitebuild.build_commit({}, FakeRun(head=self.SHA, dirty=' M site/site.js')), {'sha': self.SHA, 'dirty': True})
+
+    def test_an_explicit_commit_wins_over_the_one_the_action_reports(self):
+        # a release of an older tag is built from a checkout of that tag, while GITHUB_SHA is whatever the run started on
+        other = 'b' * 40
+        self.assertEqual(sitebuild.build_commit({'SYMBOLMAKER_COMMIT': self.SHA, 'GITHUB_SHA': other}, FakeRun()), {'sha': self.SHA, 'dirty': False})
+
+    def test_nothing_usable_means_no_commit(self):
+        self.assertIsNone(sitebuild.build_commit({}, FakeRun(fail=True)))
+        self.assertIsNone(sitebuild.build_commit({}, FakeRun(head='not a hash')))
+        self.assertEqual(sitebuild.build_commit({'GITHUB_SHA': 'garbage'}, FakeRun(head=self.SHA))['sha'], self.SHA,
+                         'a malformed value in the environment is ignored')
+
+
+class DescribeCommitTests(unittest.TestCase):
+    SHA = '0123456789abcdef0123456789abcdef01234567'
+
+    def test_a_commit_is_shown_short_and_a_dirty_one_says_so(self):
+        self.assertEqual(sitebuild.describe_commit({'sha': self.SHA, 'dirty': False}), '0123456')
+        self.assertEqual(sitebuild.describe_commit({'sha': self.SHA, 'dirty': True}), '0123456 (local changes)')
+
+    def test_an_unknown_commit_is_called_unknown(self):
+        self.assertEqual(sitebuild.describe_commit(None), 'unknown')
+
+
+class CommitInSitesJsonTests(unittest.TestCase):
+    def setUp(self):
+        self.out = Path(tempfile.mkdtemp()) / 'dist'
+        self.addCleanup(shutil.rmtree, self.out.parent, True)
+
+    def meta(self, **kw):
+        sitebuild.build(self.out, [(LUCIDE, release())], convert=fake_convert, swiftdraw='0.29.0', **kw)
+        return json.loads((self.out / 'sources.json').read_text())
+
+    def test_the_commit_is_recorded_when_known(self):
+        sha = 'f' * 40
+        d = self.meta(commit={'sha': sha, 'dirty': False})
+        self.assertEqual((d['commit'], d['dirty']), (sha, False))
+
+    def test_nothing_is_recorded_when_unknown(self):
+        d = self.meta()
+        self.assertNotIn('commit', d); self.assertNotIn('dirty', d)
+
+
 class WorkDirTests(unittest.TestCase):
     def test_the_temporary_folder_stays_unsynced_when_the_output_is(self):
         self.assertEqual(sitebuild.work_dir(Path('/x/dist')).name, 'dist.building')

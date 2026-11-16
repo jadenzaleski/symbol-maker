@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 import webbrowser
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
@@ -53,6 +54,43 @@ class BuildError(RuntimeError):
 def engine_id(fingerprint):
     """A short, stable name for an engine fingerprint (shown on the page and in issue reports)."""
     return hashlib.sha256(fingerprint.encode()).hexdigest()[:8]
+
+
+_SHA = re.compile(r'[0-9a-f]{40}')
+
+
+def project_version(path=None):
+    """The version of Symbol Maker itself (semantic versioning, kept in pyproject.toml by release-please), or 'unknown'."""
+    try:
+        return str(tomllib.loads(Path(path or ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return 'unknown'
+
+
+def build_commit(env=os.environ, run=subprocess.run):
+    """The git commit this build comes from: {'sha', 'dirty'}, or None when it cannot be told. The release workflow names it
+    (SYMBOLMAKER_COMMIT, because it builds a checkout of a tag that may not be the commit the run started on), other Actions
+    runs have GITHUB_SHA; locally it is HEAD, and `dirty` says there are uncommitted changes (so the commit is not quite what ran)."""
+    for name in ('SYMBOLMAKER_COMMIT', 'GITHUB_SHA'):
+        sha = env.get(name, '').strip().lower()
+        if _SHA.fullmatch(sha):
+            return {'sha': sha, 'dirty': False}
+    try:
+        head = run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10, cwd=ROOT)
+        if head.returncode != 0 or not _SHA.fullmatch(head.stdout.strip()):
+            return None
+        status = run(['git', 'status', '--porcelain'], capture_output=True, text=True, timeout=30, cwd=ROOT)
+        return {'sha': head.stdout.strip(), 'dirty': bool(status.stdout.strip())}
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def describe_commit(commit):
+    """A commit for the build log: the short hash, 'unknown' when it cannot be told, and a note when the work tree has
+    changes that are not in it."""
+    if not commit:
+        return 'unknown'
+    return commit['sha'][:7] + (' (local changes)' if commit['dirty'] else '')
 
 
 def engine_fingerprint(swiftdraw):
@@ -221,12 +259,14 @@ def _write_source(work, source, rel, convert, max_failed, limit, jobs, reporter,
 
 
 def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_failed=0.02, limit=None, jobs=1,
-          reporter=None, cache=None, today=None):
+          reporter=None, cache=None, today=None, commit=None, version=None):
     """Write the site into `out` (replacing it) from [(Source, release), ...]. Returns {source id: {'icons', 'failed'}}.
     Raises BuildError, leaving `out` untouched, when more than `max_failed` of any source's icons fail to convert.
     With a `cache` (a ConvertCache), icons already converted under the same fingerprint are not converted again; the
     cache is written only once the whole build has succeeded. `reporter` (see progress.py) is told about the progress.
-    Each icon records a short revision of its template and the day it was last converted (`today`, a date string)."""
+    Each icon records a short revision of its template and the day it was last converted (`today`, a date string).
+    `commit` ({'sha', 'dirty'}, see build_commit) and `version` (see project_version) are recorded so the page can link to
+    the code and the release that made the build."""
     out = Path(out)
     reporter = reporter or NullReporter()
     today = today or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
@@ -241,11 +281,16 @@ def build(out, items, convert=convert_apple, swiftdraw=None, site_dir=None, max_
             listing.append({'id': source.id, 'title': source.title, 'version': rel['version'], 'license': rel['license_name'],
                             'homepage': source.homepage, 'count': summary[source.id]['icons'],
                             'failed': summary[source.id]['failed']})
-        (work / 'sources.json').write_text(json.dumps({
+        meta = {
             'built': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
             'swiftdraw': swiftdraw or 'unknown', 'engine': engine_id(cache.fingerprint if cache else engine_fingerprint(swiftdraw)),
             'weights': {'ultralight': APPLE_ULTRA, 'black': APPLE_BLACK},
-            'sources': listing}, separators=(',', ':')), encoding='utf-8')
+            'sources': listing}
+        if version:
+            meta['version'] = version
+        if commit:
+            meta['commit'], meta['dirty'] = commit['sha'], bool(commit['dirty'])
+        (work / 'sources.json').write_text(json.dumps(meta, separators=(',', ':')), encoding='utf-8')
         (work / '.nojekyll').write_text('', encoding='utf-8')
         if site_dir:
             shutil.copytree(site_dir, work, dirs_exist_ok=True)
@@ -299,9 +344,10 @@ def main(argv=None):
     sd = swiftdraw_version()
     fingerprint = engine_fingerprint(sd)
     cache = ConvertCache(args.cache, fingerprint) if args.cache else None
+    commit = build_commit()
     say.info('Symbol Maker site build')
     say.info(f'  {len(ids)} icon set{"s" if len(ids) != 1 else ""} · {args.jobs} process{"es" if args.jobs != 1 else ""} · '
-             f'SwiftDraw {sd} · engine {engine_id(fingerprint)} · cache {args.cache or "off"}'
+             f'v{project_version()} · commit {describe_commit(commit)} · SwiftDraw {sd} · engine {engine_id(fingerprint)} · cache {args.cache or "off"}'
              + (f' · first {args.limit} icons of each set' if args.limit else ''))
     say.info()
     say.info('Downloading')
@@ -316,7 +362,7 @@ def main(argv=None):
     say.info('Converting')
     try:
         summary = build(args.out, items, swiftdraw=sd, site_dir=args.site, limit=args.limit, jobs=args.jobs, cache=cache,
-                        reporter=say)
+                        reporter=say, commit=commit, version=project_version())
     except BuildError as e:
         sys.exit(f'\nBuild failed: {e}')
     say.info()
