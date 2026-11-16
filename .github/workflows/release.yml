@@ -33,7 +33,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -58,7 +58,7 @@ jobs:
         run: |
           case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Not a release tag: $TAG" >&2; exit 1 ;; esac
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
       - name: Record the exact commit
@@ -73,7 +73,7 @@ jobs:
         run: |
           gh release view "$TAG" --json body --jq .body | uv run --locked python -m symbolmaker.release_assets notes --site dist.nosync > notes.md
           gh release edit "$TAG" --notes-file notes.md
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist.nosync
 
@@ -91,4 +91,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
