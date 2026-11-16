@@ -1,75 +1,58 @@
 # Symbol Maker
 
-Icons from [Lucide](https://lucide.dev), [Tabler Icons](https://tabler.io/icons), [Heroicons](https://heroicons.com),
-[Sidekickicons](https://github.com/ndri/sidekickicons) and [Iconoir](https://iconoir.com) as ready-to-use **SF Symbols templates**, with Ultralight, Regular
-and Black weights that line up the way Apple's do. The result is a static site on GitHub Pages: pick an icon set and an
-icon, check it against the template's guides, and download either
+**Popular open-source icon sets as custom SF Symbols, ready for Xcode and the SF Symbols app.**
 
-- the **`.svg`** template: open it in the SF Symbols app, or drag it onto a *Symbol Image Set* in Xcode, or
-- the **`.symbolset`** folder (zipped): drop it into an asset catalog.
+### [Open Symbol Maker](https://jadenzaleski.github.io/symbol-maker/)
 
-Symbol names are prefixed with the set (`lucide.house`, `tabler.home`, `heroicons.home`, ...) so they never clash with
-Apple's or with each other. Only the outline style of each set is included: it is drawn with strokes, so it can get real
-weights. Layers and animations are tuned afterwards in the SF Symbols app; the templates ship with an automatic first
-guess at the layers (a container is `secondary`, the rest `primary`).
+Over 9,000 icons from [Lucide](https://lucide.dev), [Tabler Icons](https://tabler.io/icons), [Heroicons](https://heroicons.com),
+[Iconoir](https://iconoir.com) and [Sidekickicons](https://github.com/ndri/sidekickicons), each converted into an SF Symbols
+template with **Ultralight, Regular and Black weights** that line up the way Apple's do. They get lighter and bolder with the
+font weight and Bold Text, just like system symbols.
 
-## How it works
+## What you can do
 
-A GitHub Action on a macOS runner runs `./ci.sh`:
+- **Search and preview** every icon against the template's baseline, cap height and margins.
+- **Tune the layers** before you download: reorder them, regroup strokes, set each layer's level and color, and see the
+  order SF Symbols will animate them in.
+- **Download** one symbol as an `.svg` template or as a `.symbolset` folder.
+- **Collect symbols in a project** (with your layer edits) and export the whole set as an Xcode asset catalog.
+- **Take a whole icon set** at once: every [release](https://github.com/jadenzaleski/symbol-maker/releases/latest) has one zip per set.
 
-1. downloads the latest release of each set from the npm registry (checked against its published SHA-512; the sets are
-   listed in `symbolmaker/sources.py`),
-2. converts each icon with [SwiftDraw](https://github.com/swhitty/SwiftDraw), which expands the strokes at three widths
-   (Apple's progression: Ultralight 0.30x, Black 1.90x of the Regular stroke),
-3. lines the three outlines up node for node so SF Symbols can interpolate between them (`symbolmaker/engine/weights.py`),
-4. guesses layers (`layers.py`) and writes the templates, previews and zips (`symbolmaker/sitebuild.py`).
+## Using a symbol
 
-Some icons need a little help: tiny stroked dots are drawn solid (a hole cannot appear and vanish between weights), and
-an icon whose curves close up at Apple's Black weight gets the heaviest Black that still lines up, with a note on the
-page. An icon whose weights still cannot be lined up is published with a note.
+1. Pick an icon set and an icon on the [site](https://jadenzaleski.github.io/symbol-maker/).
+2. Optionally adjust its layers in the panel on the right.
+3. Download it:
+   - the **`.svg`** template: open it in the SF Symbols app, or drag it onto a *Symbol Image Set* in Xcode;
+   - the **`.symbolset`** folder (zipped): drop it into an asset catalog.
 
-## Run it yourself
+Symbol names start with the set (`lucide.house`, `tabler.home`, `heroicons.home`, ...), so they never clash with Apple's or
+with each other. Only each set's outline style is included, because outlines are drawn with strokes and can get real weights.
 
-You need a Mac with Python 3 and [SwiftDraw](https://github.com/swhitty/SwiftDraw) (`brew install swiftdraw`). Xcode is
-needed only for one test that compiles a sample catalog with `actool`.
+## Good to know
 
-```sh
-./ci.sh                  # run the tests, then build the site into ./dist.nosync
-./ci.sh --serve          # ... and preview it at http://127.0.0.1:8000
-./ci.sh --limit 50       # only convert the first 50 icons of each set (quick)
-./ci.sh --only tabler    # only build some sets (comma-separated)
-OUT=somewhere ./ci.sh    # write the site somewhere other than ./dist.nosync
-```
+- Conversion is automatic, and a few icons can't be lined up perfectly across weights. Those are marked in the list with a
+  note saying why. If one looks wrong, **Report a problem** on the icon opens a GitHub issue already filled in.
+- Your layer edits and projects stay in your browser. Nothing is uploaded, and clearing the site's data deletes them, so
+  export what you want to keep.
+- Layers and weights are only half of an animation: the timing is set in the SF Symbols app.
 
-Conversions are cached in `./build-cache.nosync` (or `$CACHE`): an icon is converted again only if its SVG, the engine
-code, the SwiftDraw version or the weights changed, so a rebuild after a new icon-set release takes seconds. Delete the
-folder to start fresh.
+## Icon sets and licenses
 
-That is exactly what the workflow runs. Only the Python standard library is used.
+| Set | License |
+| --- | --- |
+| [Lucide](https://lucide.dev) | ISC |
+| [Tabler Icons](https://tabler.io/icons) | MIT |
+| [Heroicons](https://heroicons.com) | MIT |
+| [Iconoir](https://iconoir.com) | MIT |
+| [Sidekickicons](https://github.com/ndri/sidekickicons) | MIT |
 
-## Revisions and reporting a problem
+Each set keeps its own license. The notice is on the site, in every download and in each template as a comment.
 
-Every template has a **revision** (`rev`, eight characters of a hash of the template) and an **updated** date: the day the
-icon was last converted. Both appear on the page, in `<set>/index.json` and (the revision) in a comment inside the SVG.
-An unchanged icon keeps its revision and date across builds, because its conversion is reused from the cache; they change
-when the icon's SVG, the engine code, the weights or the SwiftDraw version change. (If the cache is lost, dates restart
-at the next build; revisions stay the same.)
+The code in this repository is under the GPL-3.0 license (see [`LICENSE`](LICENSE)). SF Symbols is a trademark of Apple Inc.;
+this project is not affiliated with Apple.
 
-On each icon, **Report a problem** opens a GitHub issue from the form in `.github/ISSUE_TEMPLATE/icon-problem.yml`, already
-filled in with the icon set, the icon, its revision and notes, and the build (engine and SwiftDraw versions).
+## Contributing
 
-## Publishing
-
-In the repository's **Settings → Pages**, set **Source** to **GitHub Actions**. The workflow in
-`.github/workflows/pages.yml` then builds and deploys on every push to `master`, every Monday, and on demand.
-
-The workflow installs whatever SwiftDraw version Homebrew has; the version used is recorded in `sources.json` and shown on
-the page. Dependabot (`.github/dependabot.yml`) opens a weekly pull request for newer versions of the GitHub Actions the
-workflow uses; the Python code has no third-party dependencies (`pyproject.toml` declares the Python version, 3.12+).
-
-## Licenses
-
-The code in this repository is under the GPL-3.0 license (see `LICENSE`).
-
-Each icon set keeps its own license (Lucide: ISC; Tabler Icons, Heroicons, Sidekickicons and Iconoir: MIT). The notice is on the
-site, in every download and in each template as a comment. SF Symbols is a trademark of Apple Inc.; this project is not affiliated with Apple.
+Bug reports, icon problems and ideas are welcome as [issues](https://github.com/jadenzaleski/symbol-maker/issues). To run the
+build yourself, see how it works, or make a change, read [CONTRIBUTING.md](CONTRIBUTING.md).
