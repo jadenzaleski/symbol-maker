@@ -86,7 +86,7 @@ class ReporterTests(unittest.TestCase):
             self.clock.tick(0.2); r.advance()
         text = self.out.getvalue()
         self.assertNotIn('\r', text)
-        self.assertNotIn('\x1b', text)                                     # no colour codes in a log
+        self.assertNotIn('\x1b', text)                                     # no color codes in a log
         lines = [l for l in text.split('\n') if l]
         self.assertTrue(8 <= len(lines) <= 12, len(lines))
         self.assertIn('100/100', lines[-1])

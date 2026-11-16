@@ -4,67 +4,166 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Symbol Maker: icons as SF Symbols templates</title>
-  <meta name="description" content="Lucide, Tabler, Heroicons and Sidekickicons as ready-to-import SF Symbols templates with Ultralight, Regular and Black weights.">
+  <title>Symbol Maker - Icons as SF Symbols templates</title>
+  <meta name="description" content="Lucide, Tabler, Heroicons, Iconoir and Sidekickicons as ready-to-import SF Symbols templates with Ultralight, Regular and Black weights.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <script>/* apply the saved theme before the first paint, so there is no flash */
+    try { var t = localStorage.getItem('symbolmaker.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="site.css">
 </head>
 <body>
-  <div class="app" id="app">
-    <aside class="sidebar" aria-label="Icons">
-      <section class="side-list">
-        <label class="caption" for="source">Icon set</label>
+  <div class="app" id="app" data-tab="icons">
+    <aside class="sidebar" aria-label="Sidebar">
+      <div id="side-tabs" class="seg two" role="radiogroup" aria-label="Show">
+        <label><input type="radio" name="tab" value="icons" checked><span>Icons</span></label>
+        <label><input type="radio" name="tab" value="projects"><span>Projects <span id="project-count" class="tab-count" hidden></span></span></label>
+      </div>
+
+      <section id="pane-icons" class="side-list" aria-label="Icons">
+        <div class="cap-row"><label class="caption" for="source">Icon set</label><button class="info" type="button" data-info="source"></button></div>
         <div class="select-wrap"><select id="source" aria-label="Icon set"></select></div>
         <label class="caption" for="search">Icons <span id="count" class="muted"></span></label>
         <div class="search-wrap"><input id="search" type="search" placeholder="Search icons" autocomplete="off" spellcheck="false"></div>
-        <label class="check" id="problems-label" hidden><input id="problems" type="checkbox"> <span id="problems-text"></span></label>
+        <div class="cap-row" id="problems-label" hidden>
+          <label class="check"><input id="problems" type="checkbox"> <span id="problems-text"></span></label>
+          <button class="info" type="button" data-info="problems"></button>
+        </div>
         <div id="list" class="list" role="listbox" aria-label="Lucide icons" tabindex="0">
           <div id="list-spacer" class="list-spacer"><div id="list-rows" class="list-rows"></div></div>
         </div>
       </section>
+
+      <section id="pane-projects" class="side-list" aria-label="Projects" hidden>
+        <div class="cap-row">
+          <span class="caption" id="projects-caption">Projects</span><button class="info" type="button" data-info="projects"></button>
+          <span class="spacer"></span>
+          <button id="new-project" class="btn small" type="button"><span class="ico i-plus" aria-hidden="true"></span> New project</button>
+        </div>
+        <p id="projects-warning" class="problem-line" role="alert" hidden>This browser is not letting the page save anything, so projects will be lost when you close the tab. Export what you want to keep.</p>
+        <ul id="project-list" class="project-list" aria-labelledby="projects-caption"></ul>
+        <p id="projects-empty" class="note">No projects yet. Make one, then use <strong>Add to project</strong> on any icon.</p>
+      </section>
+
+      <div class="side-foot">
+        <span class="caption" id="theme-label">Appearance</span>
+        <div id="theme" class="theme" role="radiogroup" aria-labelledby="theme-label">
+          <label title="Match the system"><input type="radio" name="theme" value="system"><span class="ico i-monitor" aria-hidden="true"></span><span class="sr-only">System</span></label>
+          <label title="Light"><input type="radio" name="theme" value="light"><span class="ico i-sun" aria-hidden="true"></span><span class="sr-only">Light</span></label>
+          <label title="Dark"><input type="radio" name="theme" value="dark"><span class="ico i-moon" aria-hidden="true"></span><span class="sr-only">Dark</span></label>
+        </div>
+      </div>
     </aside>
 
     <div id="resizer" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the icon list"
-         aria-valuemin="220" aria-valuemax="560" aria-valuenow="300" tabindex="0" title="Drag to resize (double-click to reset)"></div>
+         aria-valuemin="220" aria-valuemax="560" aria-valuenow="340" tabindex="0" title="Drag to resize (double-click to reset)"></div>
 
     <main class="stage" aria-label="Preview">
       <header class="toolbar">
         <h1 id="title">Symbol Maker</h1>
-        <span id="badge" class="badge" hidden></span>
+        <span id="badge" class="badge for-icon" hidden></span>
+        <button id="info-status" class="info for-icon" type="button" data-info="status" hidden></button>
         <span class="spacer"></span>
-        <a id="dl-svg" class="btn" hidden download><span class="ico i-download" aria-hidden="true"></span> Download .svg</a>
-        <a id="dl-zip" class="btn primary" hidden download><span class="ico i-package" aria-hidden="true"></span> Download .symbolset</a>
-        <a id="report" class="btn" hidden target="_blank" rel="noopener" title="Open a GitHub issue for this icon, filled in for you"><span class="ico i-flag" aria-hidden="true"></span> Report a problem</a>
+
+        <div class="menu-wrap for-icon" id="add-wrap" hidden>
+          <button id="add-project" class="btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="project-menu"><span class="ico i-folder-plus" aria-hidden="true"></span> Add to project <span class="ico i-chevron" aria-hidden="true"></span></button>
+          <div id="project-menu" class="menu" hidden>
+            <p class="menu-title">Add this symbol to</p>
+            <ul id="project-menu-list" class="menu-list"></ul>
+            <button id="menu-new" class="menu-new" type="button"><span class="ico i-plus" aria-hidden="true"></span> New project…</button>
+          </div>
+        </div>
+        <a id="dl-svg" class="btn for-icon" hidden download><span class="ico i-download" aria-hidden="true"></span> Download .svg</a>
+        <a id="dl-zip" class="btn primary for-icon" hidden download><span class="ico i-package" aria-hidden="true"></span> Download .symbolset</a>
+        <a id="report" class="btn for-icon" hidden target="_blank" rel="noopener" title="Open a GitHub issue for this icon, filled in for you"><span class="ico i-flag" aria-hidden="true"></span> Report a problem</a>
+        <button id="info-downloads" class="info for-icon" type="button" data-info="downloads" hidden></button>
+
+        <button id="export-catalog" class="btn primary for-project" type="button" hidden><span class="ico i-package" aria-hidden="true"></span> Export .xcassets</button>
+        <button id="export-svg" class="btn for-project" type="button" hidden><span class="ico i-download" aria-hidden="true"></span> Export .svg files</button>
+        <button id="info-export" class="info for-project" type="button" data-info="export" hidden></button>
       </header>
-      <div id="banner" class="banner" role="status" hidden></div>
-      <div id="empty" class="empty">
-        <div class="intro">
-          <h2>Icons as SF Symbols templates</h2>
-          <p>Pick an icon. Each one is converted with Ultralight, Regular and Black weights that line up like Apple's, so it follows font weight and Bold Text.</p>
-          <p><strong>.svg</strong> opens in the SF Symbols app (or drag it onto a Symbol Image Set in Xcode). <strong>.symbolset</strong> is a folder for an asset catalog.</p>
-          <p class="muted" id="build-info"></p>
+
+      <div id="icon-stage" class="pane">
+        <div id="banner" class="banner" role="status" hidden></div>
+        <div id="empty" class="empty">
+          <div class="intro">
+            <h2>Icons as SF Symbols templates</h2>
+            <p>Pick an icon to see its Ultralight, Regular and Black weights, adjust its layers, and download it for SF Symbols or Xcode. Collect symbols in a project to export them together. Every <a href="https://github.com/jadenzaleski/symbol-maker/releases/latest" target="_blank" rel="noopener">release on GitHub</a> also has all the templates as zips.</p>
+          </div>
+        </div>
+        <div id="workspace" class="workspace" hidden>
+          <div id="masters" class="masters"></div>
+          <div id="resizer-layers" class="resizer resizer-right" role="separator" aria-orientation="vertical" aria-label="Resize the layers panel"
+               aria-valuemin="280" aria-valuemax="640" aria-valuenow="400" tabindex="0" title="Drag to resize (double-click to reset)"></div>
+          <aside id="layers" class="layers" aria-label="Layers">
+            <header class="layers-head">
+              <h2>Layers</h2>
+              <button class="info" type="button" data-info="layers"></button>
+              <span id="edited" class="badge" hidden>Edited</span>
+              <span class="spacer"></span>
+              <button id="undo" class="icon-btn" type="button" title="Undo" aria-label="Undo" disabled><span class="ico i-undo" aria-hidden="true"></span></button>
+              <button id="redo" class="icon-btn" type="button" title="Redo" aria-label="Redo" disabled><span class="ico i-redo" aria-hidden="true"></span></button>
+              <button id="reset" class="icon-btn" type="button" title="Back to the automatic layers" aria-label="Back to the automatic layers" disabled><span class="ico i-reset" aria-hidden="true"></span></button>
+            </header>
+            <div class="cap-row"><span class="caption" id="mode-caption">Preview as</span><button class="info" type="button" data-info="view"></button></div>
+            <div id="mode" class="seg" role="radiogroup" aria-labelledby="mode-caption"></div>
+            <ul id="legend" class="legend" hidden aria-label="Level colors"></ul>
+            <section class="order" aria-labelledby="order-title">
+              <div class="order-head">
+                <h3 id="order-title">Animation order</h3>
+                <button class="info" type="button" data-info="order"></button>
+                <span class="spacer"></span>
+                <button id="play" class="btn small" type="button"><span class="ico i-play" aria-hidden="true"></span> Play</button>
+              </div>
+              <ol id="order-strip" class="strip"></ol>
+              <p id="order-note" class="note"></p>
+            </section>
+            <p id="layers-problem" class="problem-line" role="alert" hidden></p>
+            <ol id="layer-list" class="layer-list"></ol>
+            <button id="add-layer" class="btn add" type="button"><span class="ico i-plus" aria-hidden="true"></span> Add layer</button>
+            <section id="unused" class="unused" hidden aria-labelledby="unused-title">
+              <div class="cap-row"><h3 id="unused-title">Not in the symbol</h3><button class="info" type="button" data-info="unused"></button></div>
+              <ul id="unused-list" class="strokes"></ul>
+            </section>
+          </aside>
         </div>
       </div>
-      <div id="masters" class="masters" hidden></div>
+
+      <section id="project-view" class="pane project-view" aria-label="Project" hidden>
+        <div id="project-empty" class="empty" hidden>
+          <div class="intro">
+            <h2>No symbols in this project yet</h2>
+            <p>Switch to Icons, pick an icon, and use <strong>Add to project</strong>. Layer edits come along.</p>
+          </div>
+        </div>
+        <ul id="project-cards" class="cards"></ul>
+      </section>
+
       <footer class="foot">
-        <span id="symbol-line" class="muted" hidden></span>
+        <span id="symbol-line" class="muted for-icon" hidden></span>
         <span class="spacer"></span>
       </footer>
       <div class="legal">
         <span>© <span id="year">2026</span> Jaden Zaleski</span>
         <span aria-hidden="true">·</span>
-        <span>Code under <a href="https://github.com/jadenzaleski/symbol-maker/blob/master/LICENSE" target="_blank" rel="noopener">GPL-3.0</a></span>
-        <span aria-hidden="true">·</span>
-        <a href="https://github.com/jadenzaleski/symbol-maker" target="_blank" rel="noopener"><span class="ico i-external" aria-hidden="true"></span> GitHub</a>
+        <a class="gh" href="https://github.com/jadenzaleski/symbol-maker" target="_blank" rel="noopener" title="Symbol Maker on GitHub" aria-label="Symbol Maker on GitHub"><span class="ico i-github" aria-hidden="true"></span></a>
         <span aria-hidden="true">·</span>
         <span id="licenses"></span>
         <span class="spacer"></span>
         <span id="build-line" class="muted"></span>
+        <button class="info" type="button" data-info="build"></button>
       </div>
     </main>
   </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="layers.js"></script>
+  <script src="zip.js"></script>
+  <script src="projects.js"></script>
+  <script src="info.js"></script>
+  <script src="editor.js"></script>
+  <script src="projects-ui.js"></script>
   <script src="site.js"></script>
 </body>
 </html>
