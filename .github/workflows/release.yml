@@ -79,6 +79,8 @@ jobs:
 
   deploy:
     needs: build
+    # not skipped just because release-please was (a manual run): only the build has to have worked
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     concurrency:
       group: pages

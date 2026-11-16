@@ -244,6 +244,13 @@ class ReleaseSetupTests(unittest.TestCase):
             (ROOT / ".github/workflows/pages.yml").exists(), "the old deploy-on-every-push workflow is gone"
         )
         self.assertIn("deploy-pages", self.read(".github/workflows/release.yml"))
+
+    def test_a_manual_run_still_deploys_even_though_release_please_is_skipped_in_it(self):
+        # `needs: build` alone also requires build's own dependency (release-please) not to be skipped, which it is
+        # whenever the workflow is run by hand to publish a tag again.
+        text = self.read(".github/workflows/release.yml")
+        deploy = text[text.index("\n  deploy:") :]
+        self.assertRegex(deploy, r"if: \$\{\{ !cancelled\(\) && needs\.build\.result == 'success' \}\}")
         for f in sorted((ROOT / ".github/workflows").glob("*.yml")) + sorted((ROOT / ".github/actions").rglob("*.yml")):
             if f.name != "release.yml":
                 self.assertNotIn("deploy-pages", f.read_text(), f"{f.name} must not publish the site")
