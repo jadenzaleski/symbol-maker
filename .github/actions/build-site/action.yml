@@ -1,12 +1,15 @@
 name: Build the site
-description: Run the tests, then convert every icon set into ./dist.nosync (conversions are cached between runs). Needs a macOS runner and a checkout.
+description: Run the checks and the tests, then convert every icon set into ./dist.nosync (conversions are cached between runs). Needs a macOS runner and a checkout.
 
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - name: Install uv and Python
+      # uv gets Python and the dev tools (ruff, ty) from pyproject.toml and uv.lock; ./ci.sh runs everything through it
+      uses: astral-sh/setup-uv@v10.3.3
       with:
         python-version: '3.12'
+        enable-cache: true
     - name: Install SwiftDraw
       shell: bash
       run: brew install swiftdraw
@@ -19,6 +22,6 @@ runs:
         key: convert-${{ runner.os }}-${{ hashFiles('symbolmaker/engine/*.py') }}-${{ github.run_id }}
         restore-keys: |
           convert-${{ runner.os }}-${{ hashFiles('symbolmaker/engine/*.py') }}-
-    - name: Test and build
+    - name: Check, test and build
       shell: bash
       run: ./ci.sh

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This page covers how the site is built, how to run it yourself, and how changes become releases.
+Thanks for helping. This page covers how the site is built, how to run it yourself (with its code checks), and how changes become releases.
 
 ## How it works
 
@@ -31,12 +31,13 @@ The page is plain HTML, CSS and JavaScript in `site/` with no build step:
 
 ## Run it yourself
 
-You need a Mac with Python 3.12+ and [SwiftDraw](https://github.com/swhitty/SwiftDraw) (`brew install swiftdraw`). Node (for
-the page's JavaScript tests) is optional, and Xcode is only needed for the tests that compile a sample catalog with `actool`.
-The Python code uses only the standard library.
+You need a Mac with [uv](https://docs.astral.sh/uv/) (`brew install uv`) and [SwiftDraw](https://github.com/swhitty/SwiftDraw)
+(`brew install swiftdraw`). uv installs the right Python (3.12) and the dev tools for you; the program itself uses only the
+standard library. Node (for the page's JavaScript tests) is optional, and Xcode is only needed for the tests that compile a
+sample catalog with `actool`.
 
 ```sh
-./ci.sh                  # run the tests, then build the site into ./dist.nosync
+./ci.sh                  # check the code, run the tests, then build the site into ./dist.nosync
 ./ci.sh --serve          # ... and preview it at http://127.0.0.1:8000
 ./ci.sh --limit 50       # only convert the first 50 icons of each set (quick)
 ./ci.sh --only tabler    # only build some sets (comma-separated)
@@ -48,7 +49,21 @@ the SwiftDraw version or the weights changed, so a rebuild after a new icon-set 
 start fresh. The `.nosync` names keep iCloud from syncing build output if the folder lives on a synced Desktop.
 
 To try the release zips locally, after a build:
-`python3 -m symbolmaker.release_assets assets --site dist.nosync --out release-assets`.
+`uv run python -m symbolmaker.release_assets assets --site dist.nosync --out release-assets`.
+
+### Code checks
+
+`./ci.sh` (and both workflows, through it) stops before building if any of these fail, so they are enforced, not advisory:
+
+| Check | What it does | Fix |
+| --- | --- | --- |
+| `uv run ruff check .` | lint: pycodestyle, pyflakes, import order, likely bugs, modern syntax, simplifications | `uv run ruff check --fix .` for what can be fixed automatically |
+| `uv run ruff format --check .` | the code is formatted the way `ruff format` writes it (120 columns) | `uv run ruff format .` |
+| `uv run ty check` | type checking with [ty](https://docs.astral.sh/ty/) | fix the code; use `# ty: ignore[rule]` only with a reason |
+
+They are configured in `pyproject.toml`, and `uv run --locked` refuses to run if `uv.lock` is out of date, so after changing
+the dev tools run `uv lock` and commit the result. Dependabot updates ruff and ty weekly. If this folder is on an iCloud-synced
+Desktop, keep the virtual environment out of iCloud with `export UV_PROJECT_ENVIRONMENT=.venv.nosync`.
 
 ## Revisions and fingerprints
 
@@ -118,4 +133,4 @@ feature is a minor bump); to make a particular version, put `Release-As: 1.0.0` 
 
 The workflows install whatever SwiftDraw version Homebrew has; the version used is recorded in `sources.json` and shown on
 the page. Dependabot (`.github/dependabot.yml`) opens a weekly pull request for newer versions of the GitHub Actions the
-workflows use.
+workflows use and of the dev tools in `uv.lock`.

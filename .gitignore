@@ -1,6 +1,3 @@
-# the real .git folder lives in .git.nosync so iCloud does not sync it
-.git.nosync/
-
 # build output (and iCloud's conflict copies of it, e.g. "dist 2")
 /dist/
 /dist *
@@ -19,3 +16,10 @@ __pycache__/
 
 # JetBrains
 /.idea/
+
+# uv
+/.venv/
+/.venv.nosync/
+*.egg-info/
+
+.ruff_cache/

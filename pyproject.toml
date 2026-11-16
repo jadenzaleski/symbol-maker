@@ -8,9 +8,39 @@ license = { file = "LICENSE" }
 # Standard library only: nothing to install. SwiftDraw (`brew install swiftdraw`) is a separate macOS tool.
 dependencies = []
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+[dependency-groups]
+# Development tools only; the program itself needs nothing but the standard library. `uv sync` installs them.
+dev = [
+    "ruff>=0.15",
+    "ty>=0.0.104",
+]
 
-[tool.setuptools.packages.find]
-include = ["symbolmaker*"]
+[tool.uv]
+# An application, not a library: there is nothing to build or install, only a Python and the tools above.
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["*.nosync"] # build output and cache (and the virtual environment, if kept on iCloud)
+
+[tool.ruff.lint]
+select = [
+    "E", "W", # pycodestyle
+    "F", # pyflakes
+    "I", # import order
+    "UP", # modern syntax for the target Python
+    "B", # likely bugs
+    "C4", # comprehensions
+    "SIM", # simplifications
+    "RUF", # ruff's own
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",   # the page text uses × · … and curly quotes on purpose
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.ty.environment]
+python-version = "3.12"

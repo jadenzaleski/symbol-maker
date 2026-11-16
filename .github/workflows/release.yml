@@ -66,12 +66,12 @@ jobs:
         run: echo "SYMBOLMAKER_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: ./.github/actions/build-site
       - name: Pack the templates
-        run: python3 -m symbolmaker.release_assets assets --site dist.nosync --out release-assets
+        run: uv run --locked python -m symbolmaker.release_assets assets --site dist.nosync --out release-assets
       - name: Attach them to the release
         run: gh release upload "$TAG" release-assets/* --clobber
       - name: Say what is in them in the release notes
         run: |
-          gh release view "$TAG" --json body --jq .body | python3 -m symbolmaker.release_assets notes --site dist.nosync > notes.md
+          gh release view "$TAG" --json body --jq .body | uv run --locked python -m symbolmaker.release_assets notes --site dist.nosync > notes.md
           gh release edit "$TAG" --notes-file notes.md
       - uses: actions/upload-pages-artifact@v3
         with:
