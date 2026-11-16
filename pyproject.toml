@@ -1,6 +1,6 @@
 [project]
 name = "symbol-maker"
-version = "0.0.0"
+version = "0.1.0"
 description = "Icon sets (Lucide, Tabler, Heroicons, Iconoir, Sidekickicons) as ready-to-use SF Symbols templates, built into a static site."
 readme = "README.md"
 requires-python = ">=3.12"
