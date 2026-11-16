@@ -16,3 +16,6 @@ __pycache__/
 
 # local notes (they describe the retired local app and hold local paths)
 /docs/
+
+# JetBrains
+/.idea/
