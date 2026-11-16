@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/jadenzaleski/symbol-maker/compare/v0.1.0...v0.2.0) (2026-11-16)
+
+
+### Features
+
+* **site:** show the original icon, and optionally over the Regular weight ([c4bac7f](https://github.com/jadenzaleski/symbol-maker/commit/c4bac7f69e797ec149e1096f411607d022927884))
+
+
+### Bug fixes
+
+* **release:** deploy Pages when the workflow is run by hand ([20c886e](https://github.com/jadenzaleski/symbol-maker/commit/20c886e40ce84e473370efa478498de6b6370813))
+* **release:** tag releases v0.1.0, not symbol-maker-v0.1.0 ([627c00e](https://github.com/jadenzaleski/symbol-maker/commit/627c00ea2fb72319acbf4dc27ac152af3524ee0c))
+
 ## 0.1.0 (2026-11-16)
 
 
