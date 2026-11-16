@@ -30,6 +30,7 @@ The page is plain HTML, CSS and JavaScript in `site/` with no build step:
 | File | What it does |
 | --- | --- |
 | `site/layers.js` | the layer model and how it is written into a template (no DOM, so Node tests it) |
+| `site/original.js` | reads the original icon and places it on the template, for the Original card and the overlay (no DOM, so Node tests it) |
 | `site/editor.js` | the Layers panel and its preview |
 | `site/projects.js`, `site/projects-ui.js` | projects: the model and export, and the page for them |
 | `site/zip.js` | a small zip writer for edited downloads and exports |

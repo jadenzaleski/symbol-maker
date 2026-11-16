@@ -15,6 +15,8 @@
       body: 'Variable weights: Ultralight, Regular and Black line up point for point, so the symbol gets lighter and bolder with font weight and Bold Text.\n\nSingle weight: they could not be lined up, so the symbol looks the same at every weight.\n\nNo weight change: the SVG has no strokes, so all three weights are identical.' },
     downloads: { title: 'Downloads',
       body: '.svg is the template: open it in the SF Symbols app, or drag it onto a Symbol Image Set in Xcode.\n\n.symbolset is a folder (zipped) for an Xcode asset catalog: unzip it and drop it in.\n\nBoth include your layer edits.' },
+    original: { title: 'Original',
+      body: 'The icon exactly as its icon set publishes it, drawn from the same .svg file, on its own grid. The dashed box is that grid.\n\nTick “Original on top” on the Regular weight to draw it over the converted symbol in color. Wherever the black shows beyond the color, the conversion changed the shape (for example a tiny dot that was made solid).\n\nIt is only a preview: the downloads never contain it.' },
     layers: { title: 'Layers',
       body: 'A layer is a group of strokes that SF Symbols colors and animates together. Reorder layers, move strokes between them, add or remove layers, and set each layer’s level and color.\n\nThe downloads follow your edits. Edits stay in this browser, for each icon, until the icon itself changes.' },
     view: { title: 'Preview as',

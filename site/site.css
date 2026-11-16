@@ -74,13 +74,25 @@ input[type=search] { -webkit-appearance: none; appearance: none; background: var
 .intro h2 { color: var(--text); font-size: 17px; margin: 0 0 10px; }
 .intro p { margin: 0 0 10px; }
 
-.masters { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 12px; min-height: 0; overflow: auto; }
-.card { margin: 0; flex: 1 1 0; min-height: 150px; background: var(--bg-alt); border: 1px solid var(--sep); border-radius: 12px;
+.masters { flex: 1; display: grid; grid-template-columns: clamp(200px, 30%, 340px) minmax(0, 1fr); grid-template-rows: repeat(3, minmax(150px, 1fr));
+  gap: 12px; padding: 16px 20px 12px; min-height: 0; overflow: auto; }
+.card { margin: 0; grid-column: 2; min-height: 150px; background: var(--bg-alt); border: 1px solid var(--sep); border-radius: 12px;
   padding: 10px 14px 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.card.original { grid-column: 1; grid-row: 1 / span 3; }
 .card svg { flex: 1; min-height: 0; width: 100%; max-width: 420px; overflow: visible; }
-.card svg path { fill: var(--glyph); }
-.card .label { align-self: flex-start; font-size: 12px; color: var(--text-2); }
+.card svg .art path { fill: var(--glyph); }
+.card .label { align-self: stretch; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .card .label strong { color: var(--text); font-weight: 600; }
+.overlay-switch { margin-left: auto; cursor: pointer; }
+.overlay-switch:has(input:disabled) { cursor: default; opacity: .6; }
+/* the original, drawn from its own file and tinted for the theme; the dashed box is its grid */
+.orig-frame { width: min(100%, 300px); margin-block: auto; box-sizing: border-box; border: 1px dashed var(--sep); border-radius: 4px; }
+.orig-art { width: 100%; height: 100%; background: var(--glyph); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.orig-meta { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-2); text-align: center; }
+.card .note { margin: auto 0; }
+/* the same icon over the Regular weight: shown only when asked for */
+.card svg .overlay { display: none; color: var(--accent, var(--accent-fallback)); opacity: .75; }
+.masters.show-overlay .card svg .overlay { display: inline; }
 .foot { display: flex; align-items: center; gap: 12px; padding: 8px 20px 4px; font-size: 12px; }
 .legal { display: flex; align-items: center; gap: 8px; padding: 0 20px 10px; font-size: 11px; color: var(--text-2); flex-wrap: wrap; }
 .legal a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
@@ -91,6 +103,10 @@ input[type=search] { -webkit-appearance: none; appearance: none; background: var
 .foot #symbol-line { font-family: var(--mono); }
 
 @media (max-width: 760px) {
+  .masters { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto repeat(3, minmax(150px, 1fr)); }
+  .card.original { grid-column: 1; grid-row: 1; }
+  .card { grid-column: 1; }
+  .orig-frame { width: 140px; margin-block: 4px; }
   .app { grid-template-columns: 1fr; grid-template-rows: 42vh minmax(0, 1fr); height: auto; min-height: 100vh; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--sep); }
   .toolbar { flex-wrap: wrap; }

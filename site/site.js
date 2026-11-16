@@ -73,16 +73,73 @@ function svgEl(tag, attrs = {}) {
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   return e;
 }
-function drawWeight(g, label, name) {
+function drawWeight(g, label, name, over = null) {
   const svg = svgEl('svg', { viewBox: `${-PAD} ${-TOP} ${g.width + 2 * PAD} ${TOP + BOTTOM}`, role: 'img',
     'aria-label': `${name}, ${label} weight, with baseline, cap line and margins` });
   const line = (x1, y1, x2, y2, c) => svgEl('line', { x1, y1, x2, y2, stroke: c, 'stroke-width': 0.5, 'vector-effect': 'non-scaling-stroke' });
   const scale = CAP / g.cap;
   const art = svgEl('g', { class: 'art', transform: `scale(${scale}) translate(${-g.origin[0]} ${-g.origin[1]})` });
   g.paths.forEach((d, i) => art.append(svgEl('path', { d, 'data-i': i })));
-  svg.append(line(-PAD, 0, g.width + PAD, 0, BLUE), line(-PAD, -CAP, g.width + PAD, -CAP, BLUE), art,
-    line(0, -TOP + 6, 0, 18, MARGIN), line(g.width, -TOP + 6, g.width, 18, MARGIN));
+  svg.append(line(-PAD, 0, g.width + PAD, 0, BLUE), line(-PAD, -CAP, g.width + PAD, -CAP, BLUE), art);
+  if (over) svg.append(over);                                    // the original icon, when it is asked for (see overlay())
+  svg.append(line(0, -TOP + 6, 0, 18, MARGIN), line(g.width, -TOP + 6, g.width, 18, MARGIN));
   return svg;
+}
+/* ---------- the original icon: its own card, and optionally drawn over the Regular weight ---------- */
+const OVERLAY_KEY = 'symbolmaker.overlay';
+function overlayOn() { try { return localStorage.getItem(OVERLAY_KEY) === '1'; } catch { return false; } }
+function rememberOverlay(on) { try { localStorage.setItem(OVERLAY_KEY, on ? '1' : '0'); } catch { /* not remembered */ } }
+
+function originalCard(item, text) {
+  const src = state.source;
+  const card = document.createElement('figure'); card.className = 'card original';
+  const cap = document.createElement('figcaption'); cap.className = 'label';
+  cap.append(Object.assign(document.createElement('strong'), { textContent: 'Original' }), Info.button('original'));
+  card.append(cap);
+  const url = `${src.id}/icons/${item.name}.svg`;
+  if (text === null) {
+    card.append(Object.assign(document.createElement('p'), { className: 'note', textContent: 'The original could not be loaded.' }));
+    return card;
+  }
+  const fit = Original.grid(text) || { w: 24, h: 24 };
+  const frame = document.createElement('div'); frame.className = 'orig-frame';
+  frame.style.aspectRatio = `${fit.w} / ${fit.h}`;                // the box is the file's own grid
+  const art = document.createElement('div'); art.className = 'orig-art';
+  art.setAttribute('role', 'img'); art.setAttribute('aria-label', `${item.name}, the original icon as ${src.title} draws it`);
+  art.style.setProperty('--icon', `url("${url}")`);               // the file itself, tinted for the theme
+  frame.append(art);
+  const f = Original.facts(text);
+  const how = [f.grid, f.stroke && `stroke ${f.stroke}`, f.caps && `${f.caps} caps`].filter(Boolean).join(' · ');
+  const meta = document.createElement('p'); meta.className = 'orig-meta';
+  const link = Object.assign(document.createElement('a'), { href: url, target: '_blank', rel: 'noopener', textContent: 'Open the SVG' });
+  meta.append(`${src.title} ${src.version}`, document.createElement('br'), how, how ? document.createElement('br') : '', link);
+  card.append(frame, meta);
+  return card;
+}
+// The original's shapes drawn over the Regular weight, where the converter put them. Returns { layer, why }: the SVG group
+// (null when the icon cannot be drawn this way) and, then, a reason to show instead of the switch.
+function overlay(guides, text) {
+  if (text === null) return { layer: null, why: 'The original could not be loaded.' };
+  const fit = Original.grid(text), parsed = Original.parse(text);
+  if (!fit) return { layer: null, why: 'The original has no usable size, so it cannot be drawn on top.' };
+  if (parsed.unsupported) return { layer: null, why: `The original uses ${parsed.unsupported}, which is not drawn on top.` };
+  const build = n => { const e = svgEl(n.tag, n.attrs); n.children.forEach(c => e.append(build(c))); return e; };
+  const layer = svgEl('g', { class: 'overlay', 'pointer-events': 'none', 'aria-hidden': 'true',
+    transform: Original.transform(Original.place(guides.regular, fit, CAP)) });
+  const paint = svgEl('g', parsed.root);
+  parsed.nodes.forEach(n => paint.append(build(n)));
+  layer.append(paint);
+  return { layer, why: null };
+}
+function overlaySwitch(host, why) {
+  const label = document.createElement('label'); label.className = 'check overlay-switch';
+  const box = document.createElement('input'); box.type = 'checkbox';
+  box.checked = !why && overlayOn(); box.disabled = !!why;
+  host.classList.toggle('show-overlay', box.checked);
+  box.addEventListener('change', () => { rememberOverlay(box.checked); host.classList.toggle('show-overlay', box.checked); });
+  label.append(box, ' Original on top');
+  if (why) label.title = why; else label.title = 'Draw the original icon over the Regular weight, in color';
+  return label;
 }
 function showBadge(status) {
   const b = $('#badge'), m = BADGES[status];
@@ -103,20 +160,24 @@ async function pick(name, { scroll = true, preset = null } = {}) {
   if (location.hash !== hash) history.replaceState(null, '', hash);
   renderList(); if (scroll) scrollToPicked();
   const mine = ++state.seq;
-  let guides, text;
-  try { [guides, text] = await Promise.all([getJSON(`${id}/guides/${item.symbol}.json`), getText(`${id}/templates/${item.symbol}.svg`)]); }
-  catch { showNotes(['Could not load this icon. Check your connection and try again.'], 'error'); return; }
+  let guides, text, original;
+  try {
+    [guides, text, original] = await Promise.all([getJSON(`${id}/guides/${item.symbol}.json`), getText(`${id}/templates/${item.symbol}.svg`),
+      getText(`${id}/icons/${name}.svg`).catch(() => null)]);       // the original is a bonus: the page works without it
+  } catch { showNotes(['Could not load this icon. Check your connection and try again.'], 'error'); return; }
   if (mine !== state.seq) return;                      // a newer pick is loading
   $('#title').textContent = name;
   showBadge(item.status); showNotes(item.notes, item.status);
   $('#empty').hidden = true;
   $('#workspace').hidden = false;
   const host = $('#masters');
-  host.replaceChildren(...WEIGHTS.map(([key, label]) => {
+  const over = overlay(guides, original);
+  host.replaceChildren(originalCard(item, original), ...WEIGHTS.map(([key, label]) => {
     const card = document.createElement('figure'); card.className = 'card';
     const cap = document.createElement('figcaption'); cap.className = 'label';
     cap.append(Object.assign(document.createElement('strong'), { textContent: label }));
-    card.append(cap, drawWeight(guides[key], label, name));       // the weight's name sits at the top left of its box
+    if (key === 'regular') cap.append(overlaySwitch(host, over.why));
+    card.append(cap, drawWeight(guides[key], label, name, key === 'regular' ? over.layer : null));   // the weight's name sits at the top left of its box
     return card;
   }));
   const svg = $('#dl-svg'), zip = $('#dl-zip');

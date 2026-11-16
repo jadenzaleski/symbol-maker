@@ -12,6 +12,7 @@ font weight and Bold Text, just like system symbols.
 ## What you can do
 
 - **Search and preview** every icon against the template's baseline, cap height and margins.
+- **See the original** icon as its set draws it, next to the three weights, and lay it over the Regular weight to see what the conversion changed.
 - **Tune the layers** before you download: reorder them, regroup strokes, set each layer's level and color, and see the
   order SF Symbols will animate them in.
 - **Download** one symbol as an `.svg` template or as a `.symbolset` folder.
