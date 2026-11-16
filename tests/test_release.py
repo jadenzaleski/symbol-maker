@@ -236,6 +236,7 @@ class ReleaseSetupTests(unittest.TestCase):
         self.assertEqual(pkg["release-type"], "python")
         self.assertTrue(pkg["bump-minor-pre-major"], "while below 1.0 a feature is a minor bump, not a major one")
         self.assertTrue(pkg["include-v-in-tag"], "tags look like v0.1.0")
+        self.assertIs(pkg["include-component-in-tag"], False, "not symbol-maker-v0.1.0, which release.yml refuses")
         self.assertRegex(cfg["bootstrap-sha"], r"^[0-9a-f]{40}$")
 
     def test_pages_is_deployed_only_from_the_release_workflow(self):
