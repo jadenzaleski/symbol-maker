@@ -1,0 +1,94 @@
+name: Release
+
+# Versions are made by release-please from Conventional Commits (feat: = minor, fix: = patch, "!" or BREAKING CHANGE = major;
+# below 1.0 a breaking change is a minor bump). It keeps a "release" pull request open that updates CHANGELOG.md and the
+# version in pyproject.toml. Merging that pull request tags the version and creates the GitHub release, and this same run
+# then builds the site, attaches the templates to the release and publishes it to GitHub Pages. Pages is only ever published
+# from here, so the live site is always a released version.
+#
+# To publish a release again (say the Pages deploy failed), run this workflow by hand with the tag.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'An existing release tag to build and publish again, e.g. v0.1.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write            # release-please keeps its "autorelease" labels on the pull request
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    needs: release-please
+    # a release was just made, or someone asked for one to be published again
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: macos-latest      # SwiftDraw is a macOS tool
+    # Only publishing waits its turn. release-please itself must run for every push: if a run that creates a release
+    # could be replaced by a later one, a merged release pull request would stay untagged.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write          # to attach files to the release
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the tag
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Not a release tag: $TAG" >&2; exit 1 ;; esac
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Record the exact commit
+        # the checkout is of the tag, which is not always the commit this run started on
+        run: echo "SYMBOLMAKER_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/build-site
+      - name: Pack the templates
+        run: python3 -m symbolmaker.release_assets assets --site dist.nosync --out release-assets
+      - name: Attach them to the release
+        run: gh release upload "$TAG" release-assets/* --clobber
+      - name: Say what is in them in the release notes
+        run: |
+          gh release view "$TAG" --json body --jq .body | python3 -m symbolmaker.release_assets notes --site dist.nosync > notes.md
+          gh release edit "$TAG" --notes-file notes.md
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist.nosync
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

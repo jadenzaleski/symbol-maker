@@ -1,0 +1,27 @@
+name: CI
+
+# Tests and builds the whole site on every pull request and push, and every Monday (to notice upstream icon changes that
+# break a conversion). It only builds: the site is published by release.yml, when a release is made.
+# The build is ./ci.sh, which you can run on your own Mac to get the same result.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest      # SwiftDraw is a macOS tool
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-site
