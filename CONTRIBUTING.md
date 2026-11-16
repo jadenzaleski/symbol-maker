@@ -9,7 +9,8 @@ A GitHub Action on a macOS runner runs `./ci.sh`, which
 1. downloads the latest release of each icon set from the npm registry (checked against its published SHA-512; the sets are
    listed in `symbolmaker/sources.py`),
 2. converts each icon with [SwiftDraw](https://github.com/swhitty/SwiftDraw), which expands the strokes at three widths
-   (Apple's progression: Ultralight 0.30x, Black 1.90x of the Regular stroke),
+   (Apple's progression: Ultralight 0.30x, Black 1.90x of the Regular stroke); `symbolmaker/engine/variants.py` explains
+   what happens when SwiftDraw 0.30 or later refuses an icon (below),
 3. lines the three outlines up node for node so SF Symbols can interpolate between them (`symbolmaker/engine/weights.py`),
 4. guesses layers (`layers.py`: a container is `secondary`, the rest `primary`) and writes the templates, previews and zips
    (`symbolmaker/sitebuild.py`).
@@ -17,6 +18,12 @@ A GitHub Action on a macOS runner runs `./ci.sh`, which
 Some icons need a little help. Tiny stroked dots are drawn solid, because a hole cannot appear and vanish between weights.
 An icon whose curves close up at Apple's Black weight gets the heaviest Black that still lines up, with a note on the page.
 An icon whose weights still cannot be lined up is published with a note.
+
+SwiftDraw 0.30 added a check that refuses to write a template whose three weights differ in structure (SF Symbols would crash
+drawing it), and exits with *Variants are not interpolatable*. Lining those weights up is our aligner's job, so it needs
+them written out. When SwiftDraw refuses, `variants.py` runs it once per weight on the SVG with its strokes scaled to that
+weight, which it has no reason to refuse, and puts the three outlines together itself. Icons SwiftDraw accepts are untouched,
+and 0.29 (which never refused) works too. A test checks that the weights made this way are where and as big as SwiftDraw's own.
 
 The page is plain HTML, CSS and JavaScript in `site/` with no build step:
 

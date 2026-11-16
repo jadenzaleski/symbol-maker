@@ -21,8 +21,18 @@ ET.register_namespace("", SVG_NS)
 ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
 
 
+DEFAULT_INSETS = "2.25,0,2.25,0"
+
+
 class SwiftDrawError(RuntimeError):
     """swiftdraw is missing or rejected the SVG; the message is safe to show to the user."""
+
+
+class VariantsNotInterpolatable(SwiftDrawError):
+    """swiftdraw (0.30 and later) would not write the template because its three weights differ in structure.
+
+    Older versions wrote it anyway; `variants.run_weights` copes with both by making the weights one at a time.
+    """
 
 
 def find_swiftdraw():
@@ -94,6 +104,37 @@ def _own_stroke(el):
     return m.group(1).strip() if m else None
 
 
+_STYLE_WIDTH = re.compile(r"((?:^|;)\s*stroke-width\s*:\s*)([^;]+)")
+
+
+def _scaled_width(value, factor):
+    n = _num(value)
+    if n is None:
+        raise ValueError(f"Cannot scale the stroke width {value!r}.")
+    return _fmt(n * factor)
+
+
+def scale_strokes(svg_text, factor):
+    """The SVG with every stroke width multiplied by `factor` (the same way swiftdraw scales one for a weight).
+
+    Widths on the root, on groups, on shapes and in `style` attributes are scaled; an SVG that never says how wide its
+    strokes are gets the default width (1) scaled. A width it cannot read, or a style sheet (which it does not read),
+    raises ValueError rather than being left at the wrong weight.
+    """
+    root = _parse(svg_text)
+    if any(el.tag.split("}")[-1] == "style" for el in root.iter()):
+        raise ValueError("Cannot scale the strokes of an SVG that has a style sheet.")
+    for el in root.iter():
+        if el.get("stroke-width") is not None:
+            el.set("stroke-width", _scaled_width(el.get("stroke-width"), factor))
+        style = el.get("style")
+        if style and _STYLE_WIDTH.search(style):
+            el.set("style", _STYLE_WIDTH.sub(lambda m: m.group(1) + _scaled_width(m.group(2), factor), style))
+    if root.get("stroke-width") is None and not _STYLE_WIDTH.search(root.get("style", "")):
+        root.set("stroke-width", _fmt(factor))
+    return ET.tostring(root, encoding="unicode")
+
+
 def has_strokes(svg_text):
     """True if any shape has a visible stroke (own or inherited from a group / the root)."""
     root = _parse(svg_text)
@@ -146,8 +187,12 @@ def stroke_width(svg_text):
     return max(set(found), key=lambda v: (found.count(v), v))
 
 
-def run_swiftdraw(svg_text, ultra=0.5, black=1.5, insets="2.25,0,2.25,0"):
-    """Convert to a three-master SF Symbols template (text). The SVG is passed as a file argument, never via a shell."""
+def run_swiftdraw(svg_text, ultra=0.5, black=1.5, insets=DEFAULT_INSETS):
+    """Convert to a three-master SF Symbols template (text). The SVG is passed as a file argument, never via a shell.
+
+    `ultra` and `black` are the stroke widths of those masters as multiples of the SVG's own (None: do not ask for that
+    master, and swiftdraw copies Regular into it). Raises VariantsNotInterpolatable when swiftdraw refuses the result.
+    """
     exe = find_swiftdraw()
     if not exe:
         raise SwiftDrawError(INSTALL_HINT)
@@ -162,23 +207,19 @@ def run_swiftdraw(svg_text, ultra=0.5, black=1.5, insets="2.25,0,2.25,0"):
             "sfsymbol",
             "--insets",
             insets,
-            "--ultralight-stroke-width",
-            str(ultra),
-            "--ultralight-insets",
-            insets,
-            "--black-stroke-width",
-            str(black),
-            "--black-insets",
-            insets,
-            "--output",
-            out,
         ]
+        for flag, factor in (("--ultralight", ultra), ("--black", black)):
+            if factor is not None:
+                cmd += [f"{flag}-stroke-width", str(factor), f"{flag}-insets", insets]
+        cmd += ["--output", out]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
             raise SwiftDrawError("swiftdraw took too long on this SVG (60 s).") from None
         if r.returncode != 0 or not os.path.exists(out):
             msg = (r.stderr or r.stdout or "").strip()
+            if "not interpolatable" in msg:
+                raise VariantsNotInterpolatable(msg)
             raise SwiftDrawError(msg or "swiftdraw could not convert this SVG.")
         with open(out, encoding="utf-8") as f:
             return f.read()

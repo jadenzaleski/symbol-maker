@@ -175,10 +175,14 @@ def node_pos(c):
     return pos
 
 
-def point_at(c, frac):
-    """The point at arc-length fraction `frac` of contour `c`."""
+def point_at(c, frac, fracs=None):
+    """The point at arc-length fraction `frac` of contour `c`.
+
+    Asking for many points of one contour is common: pass `fracs` (the first result of nodes_fracs) to work out the arc
+    lengths once instead of for every point.
+    """
     start, segs = c
-    f = nodes_fracs(start, segs)[0]
+    f = fracs if fracs is not None else nodes_fracs(start, segs)[0]
     pos = start
     for k, sg in enumerate(segs):
         lo = f[k]
@@ -279,7 +283,7 @@ def equalize(c3):
             best_d, g = float("inf"), (lo + nxt) / 2
             for t in range(1, 41):
                 candidate = lo + (nxt - lo) * t / 41
-                d = dist(point_at(c3[w], candidate), cl["pos"])
+                d = dist(point_at(c3[w], candidate, f), cl["pos"])
                 if d < best_d:
                     best_d, g = d, candidate
             if g <= last_frac + 1e-6:

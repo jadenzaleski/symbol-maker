@@ -7,11 +7,13 @@ from symbolmaker.engine import convert
 from symbolmaker.engine.convert import (
     MAX_SVG_BYTES,
     SwiftDrawError,
+    VariantsNotInterpolatable,
     check_input,
     find_swiftdraw,
     has_strokes,
     normalize_grid,
     run_swiftdraw,
+    scale_strokes,
     stroke_width,
 )
 
@@ -106,6 +108,97 @@ class StrokeWidthTests(unittest.TestCase):
             svg('viewBox="0 0 16 16" stroke="#000" stroke-width="1.5"', '<circle cx="8" cy="8" r="6"/>')
         )
         self.assertAlmostEqual(stroke_width(out), 2.25, places=3)  # 1.5 x (24 / 16)
+
+
+class ScaleStrokesTests(unittest.TestCase):
+    """The stroke widths of an SVG multiplied, which is how a weight is made when SwiftDraw is not asked to make it."""
+
+    def scaled(self, body, factor, attrs='viewBox="0 0 24 24"'):
+        return scale_strokes(svg(attrs, body), factor)
+
+    def test_the_width_set_on_the_root_is_scaled(self):
+        out = self.scaled('<path d="M2 2L20 20" stroke="black"/>', 1.9, 'viewBox="0 0 24 24" stroke-width="2"')
+        self.assertAlmostEqual(stroke_width(out), 3.8)
+
+    def test_a_width_on_an_element_a_group_and_in_a_style_are_all_scaled(self):
+        cases = {
+            "element": ('<path d="M2 2L9 9" stroke="black" stroke-width="2"/>', 1),
+            "group": ('<g stroke-width="4"><path d="M3 3L8 9" stroke="black"/></g>', 2),
+            "style": ('<path d="M4 4L7 9" stroke="black" style="stroke-width: 6; stroke-linecap: round"/>', 3),
+        }
+        for name, (body, expected) in cases.items():
+            with self.subTest(name):
+                self.assertAlmostEqual(stroke_width(self.scaled(body, 0.5)), expected)
+
+    def test_an_svg_that_never_says_how_wide_its_strokes_are_gets_the_default_scaled(self):
+        out = self.scaled('<path d="M2 2L20 20" stroke="black"/>', 1.9)
+        self.assertAlmostEqual(stroke_width(out), 1.9)
+
+    def test_a_scale_transform_still_multiplies_the_scaled_width(self):
+        out = self.scaled('<g transform="scale(2)"><path d="M1 1L9 9" stroke="black" stroke-width="1"/></g>', 0.3)
+        self.assertAlmostEqual(stroke_width(out), 0.6)
+
+    def test_everything_else_in_the_svg_is_kept(self):
+        body = (
+            '<path d="M2 2L20 20" stroke="black" stroke-linecap="round"/>'
+            '<circle cx="5" cy="5" r="2" fill="none" stroke="red"/>'
+        )
+        out = self.scaled(body, 2.0)
+        for part in ('d="M2 2L20 20"', 'stroke-linecap="round"', 'cx="5"', 'fill="none"', 'viewBox="0 0 24 24"'):
+            self.assertIn(part, out)
+
+    def test_a_width_it_cannot_read_or_a_style_sheet_is_refused_not_ignored(self):
+        with self.assertRaises(ValueError):
+            self.scaled('<path d="M0 0L5 5" stroke="black" stroke-width="var(--w)"/>', 2.0)
+        with self.assertRaises(ValueError):
+            self.scaled('<style>path { stroke-width: 3 }</style><path d="M0 0L5 5" stroke="black"/>', 2.0)
+
+
+class VariantsErrorTests(unittest.TestCase):
+    """SwiftDraw 0.30 refuses to write a template whose three weights differ in structure: that gets its own error."""
+
+    def failing(self, stderr):
+        done = mock.Mock(returncode=70, stdout="", stderr=stderr)
+        return mock.patch.object(convert.subprocess, "run", return_value=done)
+
+    def test_the_refusal_is_told_apart_from_other_failures(self):
+        text = "Failure: Variants are not interpolatable: path 2 has 36/45/45 segments (ultralight/regular/black)."
+        with (
+            mock.patch.object(convert, "find_swiftdraw", return_value="/x/swiftdraw"),
+            self.failing(text),
+            self.assertRaises(VariantsNotInterpolatable) as cm,
+        ):
+            run_swiftdraw(svg('viewBox="0 0 24 24"', '<path d="M0 0L5 5"/>'))
+        self.assertIsInstance(cm.exception, SwiftDrawError)
+        self.assertIn("36/45/45", str(cm.exception))
+
+    def test_any_other_failure_is_an_ordinary_swiftdraw_error(self):
+        with (
+            mock.patch.object(convert, "find_swiftdraw", return_value="/x/swiftdraw"),
+            self.failing("Failure: something else"),
+            self.assertRaises(SwiftDrawError) as cm,
+        ):
+            run_swiftdraw(svg('viewBox="0 0 24 24"', '<path d="M0 0L5 5"/>'))
+        self.assertNotIsInstance(cm.exception, VariantsNotInterpolatable)
+
+    def test_no_variant_options_are_passed_when_none_are_asked_for(self):
+        ok = mock.Mock(returncode=0, stdout="", stderr="")
+        seen = {}
+
+        def fake(cmd, **kw):
+            seen["cmd"] = cmd
+            with open(cmd[cmd.index("--output") + 1], "w") as f:
+                f.write("<svg/>")
+            return ok
+
+        with (
+            mock.patch.object(convert, "find_swiftdraw", return_value="/x/swiftdraw"),
+            mock.patch.object(convert.subprocess, "run", side_effect=fake),
+        ):
+            run_swiftdraw(svg('viewBox="0 0 24 24"', '<path d="M0 0L5 5"/>'), None, None)
+        self.assertNotIn("--ultralight-stroke-width", seen["cmd"])
+        self.assertNotIn("--black-stroke-width", seen["cmd"])
+        self.assertIn("--insets", seen["cmd"])
 
 
 @unittest.skipUnless(HAVE, "swiftdraw not installed")

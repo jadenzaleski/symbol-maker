@@ -2,8 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from .convert import check_input, has_strokes, normalize_grid, run_swiftdraw, stroke_width
+from .convert import check_input, has_strokes, normalize_grid, stroke_width
 from .layers import annotate, bbox, path_ds, plan_layers
+from .variants import run_weights
 from .weights import drop_collapsing_holes, masters_match, match_weights, shift_d, signature_ok, to_single_weight
 
 PREVIEW_KEYS = {"ultralight": "Ultralight-S", "regular": "Regular-S", "black": "Black-S"}
@@ -47,7 +48,7 @@ def _with_lighter_black(svg, ultra, black):
     """Retry the conversion with a lighter Black stroke, as little lighter as works. -> (matched template, black used)
     or (None, None). Never heavier than requested."""
     for b in (x for x in BLACK_LADDER if x < black):
-        matched, _ = match_weights(drop_collapsing_holes(run_swiftdraw(svg, ultra, b)), tries=LADDER_TRIES)
+        matched, _ = match_weights(drop_collapsing_holes(run_weights(svg, ultra, b)), tries=LADDER_TRIES)
         if matched is not None:
             return matched, b
     return None, None
@@ -61,7 +62,7 @@ def make_template(svg_text, ultra=0.5, black=1.5):
     svg, note = normalize_grid(svg_text)
     notes = [note] if note else []
     problem = False
-    raw = run_swiftdraw(svg, ultra, black)
+    raw = run_weights(svg, ultra, black)
     if not has_strokes(svg):
         template = raw if masters_match(raw) else to_single_weight(raw)
         status, problem = "identical-masters", True

@@ -6,8 +6,8 @@ import unittest
 from unittest import mock
 
 from symbolmaker.engine import weights
-from symbolmaker.engine.convert import run_swiftdraw
 from symbolmaker.engine.layers import bbox, path_ds
+from symbolmaker.engine.variants import run_weights
 from symbolmaker.engine.weights import drop_collapsing_holes, masters_match, match_weights, to_single_weight
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,7 +19,7 @@ WEIGHTS = ("Ultralight-S", "Regular-S", "Black-S")
 def raw_template(name):
     """Template as the pipeline gets it from SwiftDraw (defaults 0.5 / 1.5): the weights not yet lined up."""
     with open(f"{ROOT}/tests/fixtures/lucide/{name}.svg") as f:
-        return run_swiftdraw(f.read(), 0.5, 1.5)
+        return run_weights(f.read(), 0.5, 1.5)
 
 
 def norm_ds(svg, weight):
@@ -230,6 +230,31 @@ class CollapsingHoleTests(unittest.TestCase):
                 r = make_template(f.read(), 0.30, 1.90)
             self.assertEqual((name, r.status, r.notes), (name, "variable", []))
             self.assertTrue(masters_match(r.template))
+
+
+class EqualizeEffortTests(unittest.TestCase):
+    """Lining up a contour must not redo the same arc-length sums for every node it adds: for a 150-segment icon that
+    took minutes (SwiftDraw 0.30 hands over the weights unrepaired, so there is more to add than there used to be)."""
+
+    def circle(self):
+        ((start, segs),) = weights.parse(circle_d(0, 0, 10))
+        return start, segs
+
+    def test_a_point_asked_for_with_the_fractions_already_known_is_the_same_point(self):
+        contour = self.circle()
+        fracs = weights.nodes_fracs(*contour)[0]
+        for frac in (0.0, 0.1, 0.37, 0.5, 0.99, 1.0):
+            self.assertEqual(weights.point_at(contour, frac, fracs), weights.point_at(contour, frac))
+
+    def test_arc_lengths_are_summed_once_per_weight_not_once_per_candidate_position(self):
+        start, segs = self.circle()
+        eight = weights.insert_nodes(
+            start, segs, [0.125, 0.375, 0.625, 0.875]
+        )  # Regular has four nodes the others lack
+        with mock.patch.object(weights, "nodes_fracs", wraps=weights.nodes_fracs) as spy:
+            lined_up = weights.equalize([(start, segs), (start, eight), (start, segs)])
+        self.assertEqual(len({len(r) for r in lined_up}), 1, "the three weights now have the same structure")
+        self.assertLess(spy.call_count, 20, f"nodes_fracs ran {spy.call_count} times")
 
 
 class MatchEffortTests(unittest.TestCase):
