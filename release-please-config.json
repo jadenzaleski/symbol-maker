@@ -13,7 +13,7 @@
         {
           "type": "toml",
           "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name=='symbol-maker')].version"
+          "jsonpath": "$.package[?(@.source.virtual)].version"
         }
       ],
       "changelog-sections": [

@@ -94,17 +94,20 @@ class EnforcementTests(unittest.TestCase):
 
 
 class ReleaseKeepsTheLockInStepTests(unittest.TestCase):
+    # release-please edits TOML with a parser that wraps every string in an object, so a filter that compares a string
+    # (`@.name=='symbol-maker'`) never matches and the lock was silently left at the old version. A key that merely has
+    # to exist does match, and the project is the only "virtual" package in uv.lock (it is not built or installed).
+    JSONPATH = "$.package[?(@.source.virtual)].version"
+
     def test_release_please_bumps_the_project_version_in_uv_lock_too(self):
         cfg = json.loads(read("release-please-config.json"))
         extra = cfg["packages"]["."]["extra-files"]
-        self.assertIn(
-            {
-                "type": "toml",
-                "path": "uv.lock",
-                "jsonpath": f"$.package[?(@.name=='{PYPROJECT['project']['name']}')].version",
-            },
-            extra,
-        )
+        self.assertIn({"type": "toml", "path": "uv.lock", "jsonpath": self.JSONPATH}, extra)
+
+    def test_the_project_is_the_only_virtual_package_in_the_lock(self):
+        lock = tomllib.loads(read("uv.lock"))
+        virtual = [p["name"] for p in lock["package"] if "virtual" in p.get("source", {})]
+        self.assertEqual(virtual, [PYPROJECT["project"]["name"]])
 
 
 if __name__ == "__main__":
