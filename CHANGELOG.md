@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/jadenzaleski/symbol-maker/compare/v0.2.0...v0.3.0) (2026-11-18)
+
+
+### Features
+
+* **engine:** say so when a hole is left out of an icon ([08ced17](https://github.com/jadenzaleski/symbol-maker/commit/08ced17ba0828aaa42f5bb71a3bebd2dd4408ef4))
+
+
+### Bug fixes
+
+* **engine:** keep holes whose edge SwiftDraw drew with loops ([0130753](https://github.com/jadenzaleski/symbol-maker/commit/0130753cbeafea6a0e6258b94047666f18955d53))
+
 ## [0.2.0](https://github.com/jadenzaleski/symbol-maker/compare/v0.1.0...v0.2.0) (2026-11-16)
 
 
