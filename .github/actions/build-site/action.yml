@@ -11,8 +11,11 @@ runs:
         python-version: '3.12'
         enable-cache: true
     - name: Install SwiftDraw
+      # the runner image ships an old copy of Homebrew's formula list: without the update it installs an older SwiftDraw
       shell: bash
-      run: brew install swiftdraw
+      run: |
+        brew update --quiet
+        brew install swiftdraw
     - name: Restore converted icons
       # Keyed by the engine code, so a change to it starts fresh; each run saves what it converted. The cache file also
       # records the engine and SwiftDraw versions it was made with and is ignored if they differ.
