@@ -5,7 +5,15 @@ from dataclasses import dataclass, field
 from .convert import check_input, has_strokes, normalize_grid, stroke_width
 from .layers import annotate, bbox, path_ds, plan_layers
 from .variants import run_weights
-from .weights import drop_collapsing_holes, masters_match, match_weights, shift_d, signature_ok, to_single_weight
+from .weights import (
+    drop_collapsing_holes,
+    masters_match,
+    match_weights,
+    shift_d,
+    signature_ok,
+    to_single_weight,
+    visible_contours,
+)
 
 PREVIEW_KEYS = {"ultralight": "Ultralight-S", "regular": "Regular-S", "black": "Black-S"}
 
@@ -66,6 +74,15 @@ def _with_lighter_black(svg, ultra, black):
     return None, None
 
 
+def _lost_holes_note(count):
+    one = count == 1
+    return (
+        f"This icon has {'a hole that closes' if one else f'{count} holes that close'} up at the Black weight. "
+        f"A hole cannot appear and vanish between weights, so {'it is' if one else 'they are'} left out of all three "
+        "and the shape is solid where the original is open."
+    )
+
+
 def make_template(svg_text, ultra=0.5, black=1.5):
     """Convert one SVG. Raises ValueError for unusable input and SwiftDrawError when swiftdraw fails."""
     err = check_input(svg_text)
@@ -83,6 +100,7 @@ def make_template(svg_text, ultra=0.5, black=1.5):
             "export, but it will not get bolder with bold text."
         )
     else:
+        shapes = visible_contours(raw)
         matched, _why = _line_up(raw)
         lighter = None
         if matched is None:
@@ -110,6 +128,9 @@ def make_template(svg_text, ultra=0.5, black=1.5):
                 "The three weights of this icon could not be lined up, so it is a single-weight symbol: "
                 "it will not follow bold text."
             )
+        lost = shapes - visible_contours(template)
+        if lost > 0:
+            notes.append(_lost_holes_note(lost))
     assignments = plan_layers(path_ds(template))
     res = _result(annotate(template, assignments), status, notes, assignments)
     res.stroke = stroke_width(svg)

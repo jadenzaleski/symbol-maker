@@ -8,7 +8,13 @@ from unittest import mock
 from symbolmaker.engine import weights
 from symbolmaker.engine.layers import bbox, path_ds
 from symbolmaker.engine.variants import run_weights
-from symbolmaker.engine.weights import drop_collapsing_holes, masters_match, match_weights, to_single_weight
+from symbolmaker.engine.weights import (
+    drop_collapsing_holes,
+    masters_match,
+    match_weights,
+    to_single_weight,
+    visible_contours,
+)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INS = "2.25,0,2.25,0"
@@ -380,3 +386,14 @@ class MatchEffortTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VisibleShapeTests(unittest.TestCase):
+    """How many contours of the Regular weight are big enough to be seen: tells a hole that was lost from a dot."""
+
+    def test_a_point_and_a_speck_do_not_count_but_a_hole_you_can_see_does(self):
+        square = lambda n: f"M0,0 L{n},0 L{n},{n} L0,{n} Z"  # noqa: E731
+        d = f"{square(20)} {square(3)} M0,0 L0,0 Z"  # 9 square units is a speck
+        self.assertEqual(visible_contours(template([d], [d], [d])), 1)
+        d = f"{square(20)} {square(4)}"  # 16 square units is a hole
+        self.assertEqual(visible_contours(template([d], [d], [d])), 2)

@@ -85,6 +85,26 @@ class PipelineTests(unittest.TestCase):
             r = make_template(lucide(name), 0.30, 1.90)
             self.assertEqual((name, r.status, r.notes), (name, "variable", []))
 
+    def test_a_hole_that_closes_up_at_black_is_left_out_and_the_note_says_so(self):
+        # the headlights of the ambulance: two holes that are there at Ultralight and Regular and gone at Black
+        r = make_template(lucide("ambulance"), 0.30, 1.90)
+        self.assertEqual(r.status, "variable")
+        self.assertEqual(len([n for n in r.notes if "hole" in n]), 1, r.notes)
+        note = " ".join(r.notes)
+        self.assertIn("2 holes that close up", note)
+        self.assertIn("they are left out", note)
+        self.assertIn("Black", note)
+        self.assertFalse(r.problem)
+
+    def test_the_note_is_worded_for_one_hole_and_for_several(self):
+        self.assertIn("a hole that closes up", pipeline._lost_holes_note(1))
+        self.assertIn("it is left out", pipeline._lost_holes_note(1))
+        self.assertIn("3 holes that close up", pipeline._lost_holes_note(3))
+
+    def test_a_hole_that_is_kept_or_that_is_only_a_dot_gets_no_note(self):
+        for name in ("contrast", "dot", "skull", "heart"):
+            self.assertEqual(make_template(lucide(name), 0.30, 1.90).notes, [], name)
+
     def test_black_is_lightened_only_as_far_as_needed_to_line_the_weights_up(self):
         # donut's tight curves close up at Apple's Black (1.9x), which makes SwiftDraw's outline a different shape
         r = make_template(lucide("donut"), 0.30, 1.90)

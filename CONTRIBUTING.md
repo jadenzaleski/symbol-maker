@@ -17,6 +17,8 @@ A GitHub Action on a macOS runner runs `./ci.sh`, which
 
 Some icons need a little help. Tiny stroked dots are drawn solid, because a hole cannot appear and vanish between weights.
 An icon whose curves close up at Apple's Black weight gets the heaviest Black that still lines up, with a note on the page.
+A hole that still closes up at Black is left out of all three weights (a hole cannot appear and vanish between weights), with a note
+saying how many.
 An icon whose weights still cannot be lined up is published with a note.
 
 SwiftDraw 0.30 added a check that refuses to write a template whose three weights differ in structure (SF Symbols would crash

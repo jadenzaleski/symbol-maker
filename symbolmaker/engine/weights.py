@@ -466,6 +466,19 @@ def _collapses(contours_by_weight, k):
     return len({a > 0 for a in areas}) > 1
 
 
+HOLE_VISIBLE_AREA = 10.0  # a contour of the Regular weight with at least this area (squared template units) can be seen
+
+
+def visible_contours(template_svg):
+    """How many contours of the Regular weight are big enough to see (not a dot or a speck), in all its paths."""
+    gs = weight_groups(template_svg)
+    return sum(
+        abs(signed_area(c)) >= HOLE_VISIBLE_AREA
+        for m in re.finditer(r'<path\b[^>]*?\sd="([^"]+)"', gs[1].group(2))
+        for c in parse(m.group(1), 0)
+    )
+
+
 def _mend(cs, k):
     """The hole k of every weight with the loops SwiftDraw left on its edge cut off: [contour per weight], or None.
 
