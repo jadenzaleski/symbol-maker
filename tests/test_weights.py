@@ -232,6 +232,87 @@ class CollapsingHoleTests(unittest.TestCase):
             self.assertTrue(masters_match(r.template))
 
 
+# Lucide's "contrast" icon (a ring and a D) as SwiftDraw writes the D at each weight. A path is its outer edge and
+# then the edge of its hole, which SwiftDraw draws with a small spur at each corner of the D; at Black the spurs are
+# large enough that the hole looks turned inside out, although it is a good D-shaped hole at every weight.
+CONTRAST_D = [
+    "M265,133.615 C277.49,133.615 287.615,123.49 287.615,111 C287.615,98.51 277.49,88.385 265,88.385 "
+    "C264.405,88.385 263.923,88.867 263.923,89.462 L263.923,132.538 C263.923,133.133 264.405,133.615 265,133.615 Z "
+    "M265,131.462 L266.077,132.538 L266.077,89.462 L265,90.538 C276.301,90.538 285.462,99.699 285.462,111 "
+    "C285.462,122.301 276.301,131.462 265,131.462 Z",
+    "M465,136.128 C478.878,136.128 490.128,124.878 490.128,111 C490.128,97.122 478.878,85.872 465,85.872 "
+    "C463.017,85.872 461.41,87.479 461.41,89.462 L461.41,132.538 C461.41,134.521 463.017,136.128 465,136.128 Z "
+    "M465,128.949 L468.59,132.538 L468.59,89.462 L465,93.051 C474.913,93.051 482.949,101.087 482.949,111 "
+    "C482.949,120.913 474.913,128.949 465,128.949 Z",
+    "M665,139.359 C680.662,139.359 693.359,126.662 693.359,111 C693.359,95.338 680.662,82.641 665,82.641 "
+    "C661.233,82.641 658.18,85.695 658.18,89.462 L658.18,132.538 C658.18,136.305 661.233,139.359 665,139.359 Z "
+    "M665,125.718 L671.821,132.538 L671.821,89.462 L665,96.282 C673.129,96.282 679.718,102.872 679.718,111 "
+    "C679.718,119.129 673.129,125.718 665,125.718 Z",
+]
+
+
+class MendedHoleTests(unittest.TestCase):
+    """A hole whose edge SwiftDraw drew with loops at the corners is not a collapsing hole: with the loops cut off it is
+    a sound hole at every weight, and the symbol keeps it."""
+
+    def d_template(self):
+        return template([CONTRAST_D[0]], [CONTRAST_D[1]], [CONTRAST_D[2]])
+
+    def test_the_hole_of_the_d_is_kept_in_all_three_weights(self):
+        out = drop_collapsing_holes(self.d_template())
+        self.assertEqual(contour_counts(out), [[2], [2], [2]])
+
+    def test_the_kept_hole_is_the_hole_the_icon_has(self):
+        from symbolmaker.engine.loops import signed_area
+        from symbolmaker.engine.weights import parse
+
+        out = drop_collapsing_holes(self.d_template())
+        areas = []
+        for g in re.findall(r'<g id="[^"]+">(.*?)</g>', out, re.S):
+            (d,) = re.findall(r'<path d="([^"]+)"', g)
+            areas.append(signed_area(parse(d, 0)[1]))
+        # the hole is the part of the inside of the D beyond its straight side: 1 / 4 as big again at Ultralight as at
+        # Regular, and smaller again at Black; and no weight has it turned inside out
+        self.assertTrue(all(a > 0 for a in areas), areas)
+        self.assertGreater(areas[0], areas[1])
+        self.assertGreater(areas[1], areas[2])
+
+    def test_the_weights_with_the_hole_still_line_up(self):
+        matched, why = match_weights(drop_collapsing_holes(self.d_template()))
+        self.assertIsNotNone(matched, why)
+        self.assertTrue(masters_match(matched))
+        self.assertEqual(contour_counts(matched), [[2], [2], [2]])
+
+    def test_mending_can_be_turned_off_to_get_the_old_result(self):
+        out = drop_collapsing_holes(self.d_template(), mend=False)
+        self.assertEqual(contour_counts(out), [[1], [1], [1]], "the hole is dropped from every weight")
+
+    @unittest.skipUnless(HAVE, "swiftdraw not installed")
+    def test_an_icon_that_cannot_be_lined_up_with_its_hole_is_converted_the_old_way_not_given_up_on(self):
+        from symbolmaker.engine.pipeline import make_template
+
+        # With its holes kept, the weights of this icon do not line up at any Black weight; with them dropped they do.
+        with open(f"{ROOT}/tests/fixtures/iconoir/media-video-folder.svg") as f:
+            r = make_template(f.read(), 0.30, 1.90)
+        self.assertEqual(r.status, "variable", r.notes)
+        self.assertTrue(masters_match(r.template))
+
+    def test_a_dot_whose_hole_really_closes_is_still_made_solid(self):
+        dot = template([ring(10, 10, 1.3, 0.7)], [ring(10, 10, 2.0, 0.0)], [ring(10, 10, 2.9, 0.9, hole=False)])
+        self.assertEqual(contour_counts(drop_collapsing_holes(dot)), [[1], [1], [1]])
+
+    @unittest.skipUnless(HAVE, "swiftdraw not installed")
+    def test_the_real_contrast_icon_keeps_the_hole_of_its_d(self):
+        from symbolmaker.engine.pipeline import make_template
+
+        with open(f"{ROOT}/tests/fixtures/lucide/contrast.svg") as f:
+            r = make_template(f.read(), 0.30, 1.90)
+        self.assertEqual((r.status, r.notes), ("variable", []))
+        self.assertTrue(masters_match(r.template))
+        counts = [[d.count("M") for d in path_ds(r.template, w)] for w in WEIGHTS]
+        self.assertEqual(counts, [[2, 2]] * 3, "the ring and the D: each is an edge and a hole")
+
+
 class EqualizeEffortTests(unittest.TestCase):
     """Lining up a contour must not redo the same arc-length sums for every node it adds: for a 150-segment icon that
     took minutes (SwiftDraw 0.30 hands over the weights unrepaired, so there is more to add than there used to be)."""

@@ -44,11 +44,23 @@ LADDER_TRIES = (10, 6)  # alignment tolerances for the retries (kept few: each i
 BLACK_LADDER = (1.75, 1.6, 1.5, 1.4, 1.3, 1.2)  # lighter Black strokes to try when the requested one does not line up
 
 
+def _line_up(raw, **kw):
+    """Line up the three weights of `raw`: with the holes SwiftDraw drew loops on mended and kept if that works, and
+    otherwise with every collapsing hole dropped, as it used to be. -> (matched template or None, reason or None)."""
+    mended = drop_collapsing_holes(raw)
+    matched, why = match_weights(mended, **kw)
+    if matched is None:
+        plain = drop_collapsing_holes(raw, mend=False)
+        if plain != mended:
+            return match_weights(plain, **kw)
+    return matched, why
+
+
 def _with_lighter_black(svg, ultra, black):
     """Retry the conversion with a lighter Black stroke, as little lighter as works. -> (matched template, black used)
     or (None, None). Never heavier than requested."""
     for b in (x for x in BLACK_LADDER if x < black):
-        matched, _ = match_weights(drop_collapsing_holes(run_weights(svg, ultra, b)), tries=LADDER_TRIES)
+        matched, _ = _line_up(run_weights(svg, ultra, b), tries=LADDER_TRIES)
         if matched is not None:
             return matched, b
     return None, None
@@ -71,16 +83,17 @@ def make_template(svg_text, ultra=0.5, black=1.5):
             "export, but it will not get bolder with bold text."
         )
     else:
-        raw = drop_collapsing_holes(raw)
-        matched, _why = match_weights(raw)
+        matched, _why = _line_up(raw)
+        lighter = None
         if matched is None:
             matched, lighter = _with_lighter_black(svg, ultra, black)
-            if matched is not None:
-                notes.append(
-                    f"Black is {lighter:g}x the Regular stroke for this icon instead of {black:g}x: at the "
-                    "heavier weight its curves close up into a different shape, so the three weights could "
-                    "not line up."
-                )
+        raw = drop_collapsing_holes(raw, mend=False)  # what the fallbacks below start from, as they always have
+        if lighter is not None:
+            notes.append(
+                f"Black is {lighter:g}x the Regular stroke for this icon instead of {black:g}x: at the "
+                "heavier weight its curves close up into a different shape, so the three weights could "
+                "not line up."
+            )
         if matched is not None:
             template, status = matched, "variable"
         elif signature_ok(raw):

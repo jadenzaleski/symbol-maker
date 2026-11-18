@@ -9,21 +9,15 @@ Straight segments become curves where another weight has a curve there.
 Public API: match_weights, masters_match, to_single_weight.
 """
 
-import math
 import os
 import re
+
+from .bezier import cub, dist, lerp, split_cubic
+from .loops import remove_loops, signed_area, split_loops
 
 TOL = float(os.environ.get("TOL", "0.02"))
 INS = "2.25,0,2.25,0"
 NUM = r"-?\d*\.?\d+(?:e-?\d+)?"
-
-
-def dist(a, b):
-    return math.hypot(a[0] - b[0], a[1] - b[1])
-
-
-def lerp(a, b, t):
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
 
 
 def parse(d, min_len=1e-3):
@@ -75,29 +69,11 @@ def parse(d, min_len=1e-3):
     return out
 
 
-def cub(p0, c1, c2, p3, t):
-    u = 1 - t
-    return (
-        u**3 * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t**3 * p3[0],
-        u**3 * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t**3 * p3[1],
-    )
-
-
 def seg_len(p0, s):
     if s[0] == "L":
         return dist(p0, s[1])
     pts = [cub(p0, s[1], s[2], s[3], k / 24) for k in range(25)]
     return sum(dist(pts[k], pts[k + 1]) for k in range(24))
-
-
-def split_cubic(p0, c1, c2, p3, t):
-    a = lerp(p0, c1, t)
-    b = lerp(c1, c2, t)
-    c = lerp(c2, p3, t)
-    d = lerp(a, b, t)
-    e = lerp(b, c, t)
-    m = lerp(d, e, t)
-    return ("C", a, d, m), ("C", e, c, p3)
 
 
 def t_at(p0, s, frac):
@@ -490,13 +466,28 @@ def _collapses(contours_by_weight, k):
     return len({a > 0 for a in areas}) > 1
 
 
-def drop_collapsing_holes(template_svg):
-    """Remove, from all three weights, an inner contour that collapses in one of them.
+def _mend(cs, k):
+    """The hole k of every weight with the loops SwiftDraw left on its edge cut off: [contour per weight], or None.
+
+    SwiftDraw draws the edge of a hole with a small loop at each sharp corner, large enough at the heavy weights to make
+    the hole look turned inside out. Cut off, what is left is a sound hole when it goes the same way round, and is big
+    enough to be one, at every weight. A hole that really closes up (a dot) leaves nothing, so it is not mended."""
+    lightest = split_loops(cs[0][k])
+    sign = 1 if signed_area(max(lightest, key=lambda c: abs(signed_area(c)))) > 0 else -1
+    fixed = [remove_loops(cs[w][k], sign, HOLE_MIN_AREA) for w in range(3)]
+    return None if any(c is None for c in fixed) else fixed
+
+
+def drop_collapsing_holes(template_svg, mend=True):
+    """Remove, from all three weights, an inner contour that collapses in one of them (unless it can be mended).
 
     A stroked dot (Lucide draws one as a circle of radius 1 with a 2-wide stroke) has a real hole at Ultralight, a hole
     that has shrunk to a single point at Regular, and a hole that has turned inside out at Black. A hole cannot appear
     and vanish between weights, so the symbol could never be interpolated. Dropping the hole from every weight makes the
     dot solid at all of them, which is what it looks like at Regular and Black anyway.
+
+    A hole that only looks turned inside out because of loops on its edge is mended instead (see _mend) and kept,
+    unless `mend` is False (then every collapsing hole is dropped, which is how it used to be done).
 
     Only paths with the same number of contours in every weight are touched, and a path always keeps at least one."""
     try:
@@ -513,11 +504,16 @@ def drop_collapsing_holes(template_svg):
         cs = [parse(ds[w][i], 0) for w in range(3)]  # keep degenerate segments: a point must stay a contour
         if not (len(cs[0]) == len(cs[1]) == len(cs[2])) or len(cs[0]) < 2:
             continue
-        drop = [k for k in range(len(cs[0])) if _collapses(cs, k)]
-        if not drop or len(drop) == len(cs[0]):
+        collapsing = [k for k in range(len(cs[0])) if _collapses(cs, k)]
+        mended = {k: m for k in collapsing if mend and (m := _mend(cs, k)) is not None}
+        drop = [k for k in collapsing if k not in mended]
+        if not mended and (not drop or len(drop) == len(cs[0])):
             continue
+        if len(drop) == len(cs[0]):
+            drop = []  # never every contour of a path
+            mended = {}
         for w in range(3):
-            keep = [c for k, c in enumerate(cs[w]) if k not in drop]
+            keep = [mended[k][w] if k in mended else c for k, c in enumerate(cs[w]) if k not in drop]
             ds[w][i] = to_d(keep)
         changed = True
     if not changed:
