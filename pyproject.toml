@@ -5,7 +5,7 @@ description = "Icon sets (Lucide, Tabler, Heroicons, Iconoir, Sidekickicons) as 
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-# Standard library only: nothing to install. SwiftDraw (`brew install swiftdraw`) is a separate macOS tool.
+# Standard library only: nothing to install. SwiftDraw (the version in .swiftdraw-version) is a separate macOS tool.
 dependencies = []
 
 [dependency-groups]

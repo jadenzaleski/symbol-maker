@@ -13,7 +13,8 @@ and writes, for every source `<id>` into `--out`:
 
 plus `sources.json`, `.nojekyll` and the page itself (site/).
 
-Needs `swiftdraw` on PATH (`brew install swiftdraw`) and network access to the npm registry.
+Needs `swiftdraw` on PATH, at the version pinned in .swiftdraw-version (scripts/install-swiftdraw.sh builds it), and
+network access to the npm registry.
 """
 
 import argparse
@@ -185,6 +186,27 @@ def swiftdraw_version():
     r = subprocess.run([exe, "--help"], capture_output=True, text=True, timeout=30)
     m = re.search(r"version (\d+\.\d+\.\d+)", r.stdout + r.stderr)
     return m.group(1) if m else "unknown"
+
+
+def pinned_swiftdraw(path=None):
+    """The SwiftDraw version and tag commit this project is pinned to (.swiftdraw-version), or None without the file."""
+    path = Path(path) if path else ROOT / ".swiftdraw-version"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    pairs = (line.split("=", 1) for line in lines if "=" in line and not line.lstrip().startswith("#"))
+    return {k.strip(): v.strip() for k, v in pairs}
+
+
+def swiftdraw_pin_problem(found, pin):
+    """What is wrong if the installed SwiftDraw `found` is not the pinned one, else None."""
+    if not pin or found == pin.get("version"):
+        return None
+    return (
+        f"SwiftDraw {found} is installed, but this project is pinned to {pin.get('version')}. "
+        "Install that one with scripts/install-swiftdraw.sh and put the folder it names first on your PATH."
+    )
 
 
 def _run(convert, svg):
@@ -393,7 +415,7 @@ def main(argv=None):
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args(argv)
     if not find_swiftdraw():
-        sys.exit("swiftdraw is not installed. Install it with: brew install swiftdraw")
+        sys.exit("swiftdraw is not installed. Install the pinned version with scripts/install-swiftdraw.sh")
     ids = args.only.split(",") if args.only else list(SOURCES)
     unknown = [i for i in ids if i not in SOURCES]
     if unknown:
@@ -401,6 +423,11 @@ def main(argv=None):
     started = time.monotonic()
     say = Reporter()
     sd = swiftdraw_version()
+    problem = swiftdraw_pin_problem(sd, pinned_swiftdraw())
+    if problem:
+        if os.environ.get("CI"):  # a build that publishes must use the pinned version
+            sys.exit(problem)
+        print(f"Warning: {problem}", file=sys.stderr)
     fingerprint = engine_fingerprint(sd)
     cache = ConvertCache(args.cache, fingerprint) if args.cache else None
     commit = build_commit()

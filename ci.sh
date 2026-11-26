@@ -16,7 +16,7 @@ need() {
   fi
 }
 need uv "brew install uv"
-need swiftdraw "brew install swiftdraw"
+need swiftdraw "scripts/install-swiftdraw.sh, then put .swiftdraw.nosync first on your PATH (the pinned version)"
 
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
