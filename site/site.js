@@ -267,7 +267,7 @@ function renderBuildLine(m) {
     parts.push(['commit ', exact ? link(`${REPO}/commit/${m.commit}`, short, 'The commit this site was built from') : `${short} (local changes)`]);
   }
   parts.push(['engine ', exact ? link(`${REPO}/tree/${m.commit}/symbolmaker/engine`, m.engine, 'The conversion code at this commit. The id is a fingerprint of that code and the SwiftDraw version.') : m.engine]);
-  parts.push(`SwiftDraw ${m.swiftdraw}`);
+  parts.push([link('https://github.com/swhitty/SwiftDraw', 'SwiftDraw', 'SwiftDraw on GitHub, the tool that converts the strokes into SF Symbols templates'), ` ${m.swiftdraw}`]);
   const out = [];
   parts.forEach((p, i) => { if (i) out.push(' · '); out.push(...[].concat(p)); });
   $('#build-line').replaceChildren(...out);
