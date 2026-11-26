@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/jadenzaleski/symbol-maker/compare/v0.3.0...v0.4.0) (2026-11-26)
+
+
+### Features
+
+* **site:** link SwiftDraw in the build line to its repo ([1e17ff9](https://github.com/jadenzaleski/symbol-maker/commit/1e17ff91a3f4d20331cba271ad7a23ed278138ad))
+
+
+### Bug fixes
+
+* **engine:** keep the stroke of shapes that also have a fill ([145a7f2](https://github.com/jadenzaleski/symbol-maker/commit/145a7f2509f34574d772fc3ef7a19b9a3d54be4d))
+
 ## [0.3.0](https://github.com/jadenzaleski/symbol-maker/compare/v0.2.0...v0.3.0) (2026-11-18)
 
 
