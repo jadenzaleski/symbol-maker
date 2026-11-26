@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from .convert import check_input, has_strokes, normalize_grid, stroke_width
+from .convert import check_input, has_strokes, normalize_grid, split_fills_from_strokes, stroke_width
 from .layers import annotate, bbox, path_ds, plan_layers
 from .variants import run_weights
 from .weights import (
@@ -91,7 +91,8 @@ def make_template(svg_text, ultra=0.5, black=1.5):
     svg, note = normalize_grid(svg_text)
     notes = [note] if note else []
     problem = False
-    raw = run_weights(svg, ultra, black)
+    drawn = split_fills_from_strokes(svg)  # what SwiftDraw is given: it ignores the stroke of a shape that has a fill
+    raw = run_weights(drawn, ultra, black)
     if not has_strokes(svg):
         template = raw if masters_match(raw) else to_single_weight(raw)
         status, problem = "identical-masters", True
@@ -100,11 +101,12 @@ def make_template(svg_text, ultra=0.5, black=1.5):
             "export, but it will not get bolder with bold text."
         )
     else:
-        shapes = visible_contours(raw)
+        # the holes the icon really has: the stroke of a split shape has an inner edge too, but its fill covers it
+        shapes = visible_contours(raw if drawn == svg else run_weights(svg, ultra, black))
         matched, _why = _line_up(raw)
         lighter = None
         if matched is None:
-            matched, lighter = _with_lighter_black(svg, ultra, black)
+            matched, lighter = _with_lighter_black(drawn, ultra, black)
         raw = drop_collapsing_holes(raw, mend=False)  # what the fallbacks below start from, as they always have
         if lighter is not None:
             notes.append(

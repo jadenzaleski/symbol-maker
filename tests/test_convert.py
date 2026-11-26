@@ -1,6 +1,7 @@
 import os
 import re
 import unittest
+import xml.etree.ElementTree as ET
 from unittest import mock
 
 from symbolmaker.engine import convert
@@ -14,6 +15,7 @@ from symbolmaker.engine.convert import (
     normalize_grid,
     run_swiftdraw,
     scale_strokes,
+    split_fills_from_strokes,
     stroke_width,
 )
 
@@ -152,6 +154,72 @@ class ScaleStrokesTests(unittest.TestCase):
             self.scaled('<path d="M0 0L5 5" stroke="black" stroke-width="var(--w)"/>', 2.0)
         with self.assertRaises(ValueError):
             self.scaled('<style>path { stroke-width: 3 }</style><path d="M0 0L5 5" stroke="black"/>', 2.0)
+
+
+class SplitFillsFromStrokesTests(unittest.TestCase):
+    """SwiftDraw draws only the fill of a shape with a fill and a stroke, so we give it shapes with only one."""
+
+    HEAD = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'
+
+    def split(self, body, head=None):
+        return split_fills_from_strokes(svg(self.HEAD if head is None else head, body))
+
+    def elements(self, text):
+        root = ET.fromstring(text)
+        return [el for el in root.iter() if el.tag.split("}")[-1] in convert.SHAPES]
+
+    def test_a_small_dot_becomes_a_round_capped_point_as_wide_as_the_dot_with_its_stroke(self):
+        (dot,) = self.elements(self.split('<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>'))
+        self.assertEqual(dot.tag.split("}")[-1], "path")
+        self.assertEqual(dot.get("d"), "M13.5 6.5h.01")
+        self.assertEqual(dot.get("stroke-width"), "3")  # 2 * 0.5 + 2: what the browser draws
+        self.assertEqual(
+            (dot.get("stroke"), dot.get("fill"), dot.get("stroke-linecap")), ("currentColor", "none", "round")
+        )
+
+    def test_a_dot_drawn_as_arcs_is_found_wherever_it_sits(self):
+        for d in ("M11.5 7.5a.5.5 0 1 0 1 0a.5.5 0 1 0-1 0", "M12 7a.5.5 0 1 1 0-1a.5.5 0 0 1 0 1"):
+            with self.subTest(d):
+                (dot,) = self.elements(self.split(f'<path d="{d}" fill="currentColor"/>'))
+                self.assertEqual(dot.get("stroke-width"), "3")
+                x, y = (float(v) for v in dot.get("d").removeprefix("M").split("h")[0].split())
+                self.assertAlmostEqual(x, 12, places=3)
+                self.assertAlmostEqual(y, 7.5 if d.startswith("M11.5") else 6.5, places=3)
+
+    def test_a_bigger_shape_is_split_into_its_fill_and_its_stroke(self):
+        fill, stroke = self.elements(self.split('<circle cx="12" cy="12" r="5" fill="currentColor"/>'))
+        for el in (fill, stroke):
+            self.assertEqual((el.get("cx"), el.get("cy"), el.get("r")), ("12", "12", "5"))
+        self.assertEqual((fill.get("fill"), fill.get("stroke")), ("currentColor", "none"))
+        self.assertEqual(stroke.get("fill"), "none")
+        self.assertNotEqual(stroke.get("stroke"), "none")  # it keeps the stroke the root gives it
+
+    def test_fill_and_stroke_inherited_from_a_group_or_set_in_a_style_are_found(self):
+        grouped = self.split('<g fill="red"><circle cx="12" cy="12" r="5"/></g>')
+        self.assertEqual(len(self.elements(grouped)), 2)
+        styled = self.split(
+            '<rect x="4" y="4" width="16" height="16" style="fill:red;stroke:blue"/>', "viewBox='0 0 24 24'"
+        )
+        fill, stroke = self.elements(styled)
+        self.assertIn("stroke:none", fill.get("style"))
+        self.assertIn("fill:none", stroke.get("style"))
+
+    def test_shapes_that_have_only_a_fill_or_only_a_stroke_are_left_exactly_as_they_were(self):
+        for body in (
+            '<circle cx="12" cy="12" r="5"/>',  # stroke only (the root says fill none)
+            '<circle cx="12" cy="12" r="5" fill="red" stroke="none"/>',
+            '<circle cx="12" cy="12" r="5" fill="red" stroke-width="0"/>',
+            '<path d="M2 2L20 20"/>',
+        ):
+            with self.subTest(body):
+                text = svg(self.HEAD, body)
+                self.assertEqual(split_fills_from_strokes(text), text)
+        text = svg('viewBox="0 0 24 24" stroke="black"', '<path d="M2 2L20 20"/>')  # no fill given: not guessed at
+        self.assertEqual(split_fills_from_strokes(text), text)
+
+    def test_what_comes_out_still_scales_with_the_weight(self):
+        out = self.split('<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>')
+        self.assertEqual(stroke_width(scale_strokes(out, 0.5)), 1.5)
 
 
 class VariantsErrorTests(unittest.TestCase):

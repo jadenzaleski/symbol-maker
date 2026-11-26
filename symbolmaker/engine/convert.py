@@ -5,6 +5,8 @@ SF Symbols template with three weight masters. We scale the strokes of the Ultra
 `--ultralight-stroke-width` / `--black-stroke-width` options.
 """
 
+import copy
+import math
 import os
 import re
 import shutil
@@ -223,3 +225,256 @@ def run_swiftdraw(svg_text, ultra=0.5, black=1.5, insets=DEFAULT_INSETS):
             raise SwiftDrawError(msg or "swiftdraw could not convert this SVG.")
         with open(out, encoding="utf-8") as f:
             return f.read()
+
+
+# --- Shapes that have both a fill and a stroke --------------------------------------------------------------------
+#
+# SwiftDraw writes only the fill of a shape that is both filled and stroked (as of 0.30; its PNG output draws both, a
+# browser does too), so the stroke goes missing: Lucide's palette gets dots 1 unit wide instead of 3, and the dots of
+# many Tabler and Iconoir icons are lost the same way. `split_fills_from_strokes` gives SwiftDraw shapes that have only
+# one of the two, so it draws what the browser draws. If a later SwiftDraw keeps the stroke itself, this step does no
+# harm (nothing it writes has both) and can be deleted along with its call in pipeline.make_template.
+
+_PATH_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+_ARGUMENTS = {"m": 2, "l": 2, "h": 1, "v": 1, "c": 6, "s": 4, "q": 4, "t": 2, "a": 7}
+_UNDRAWN = {"defs", "clipPath", "mask", "pattern", "marker", "symbol", "style"}
+_NO_PAINT = {"none", "transparent"}
+_FILLED_SHAPES = {"path", "circle", "rect", "polyline", "polygon", "ellipse"}  # a <line> encloses nothing to fill
+
+
+def _own(el, name):
+    """The value this element gives the property: its style attribute wins over its own attribute."""
+    m = re.search(rf"(?:^|;)\s*{re.escape(name)}\s*:\s*([^;]+)", el.get("style", ""))
+    if m:
+        return m.group(1).strip()
+    v = el.get(name)
+    return v.strip() if v is not None else None
+
+
+def _put(el, name, value):
+    """Set the property on this element, in its style attribute too if that is where it was set."""
+    el.set(name, value)
+    style = el.get("style")
+    if style and re.search(rf"(?:^|;)\s*{re.escape(name)}\s*:", style):
+        el.set("style", re.sub(rf"((?:^|;)\s*{re.escape(name)}\s*:)[^;]*", rf"\g<1>{value}", style))
+
+
+def _arc_points(x1, y1, rx, ry, rotation, large, sweep, x2, y2):
+    """Points along an elliptical arc (SVG implementation notes F.6.5), the end point included."""
+    rx, ry = abs(rx), abs(ry)
+    if (x1, y1) == (x2, y2):
+        return []
+    if rx == 0 or ry == 0:
+        return [(x2, y2)]
+    cos_p, sin_p = math.cos(math.radians(rotation)), math.sin(math.radians(rotation))
+    dx, dy = (x1 - x2) / 2, (y1 - y2) / 2
+    x1p, y1p = cos_p * dx + sin_p * dy, -sin_p * dx + cos_p * dy
+    grow = (x1p / rx) ** 2 + (y1p / ry) ** 2
+    if grow > 1:
+        rx, ry = rx * math.sqrt(grow), ry * math.sqrt(grow)
+    side = (rx * ry) ** 2 - (rx * y1p) ** 2 - (ry * x1p) ** 2
+    coef = math.sqrt(max(0.0, side / ((rx * y1p) ** 2 + (ry * x1p) ** 2))) * (-1 if large == sweep else 1)
+    cxp, cyp = coef * rx * y1p / ry, -coef * ry * x1p / rx
+    cx, cy = cos_p * cxp - sin_p * cyp + (x1 + x2) / 2, sin_p * cxp + cos_p * cyp + (y1 + y2) / 2
+
+    def angle(ux, uy, vx, vy):
+        return math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+
+    start = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+    span = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+    if not sweep and span > 0:
+        span -= 2 * math.pi
+    elif sweep and span < 0:
+        span += 2 * math.pi
+    steps = 16
+    pts = []
+    for k in range(1, steps + 1):
+        a = start + span * k / steps
+        ex, ey = rx * math.cos(a), ry * math.sin(a)
+        pts.append((cos_p * ex - sin_p * ey + cx, sin_p * ex + cos_p * ey + cy))
+    return pts
+
+
+def _path_points(d):
+    """Points along the path data (curves sampled), enough to tell how big the shape is. ValueError if unreadable."""
+    n, i = len(d), 0
+
+    def blank():
+        nonlocal i
+        while i < n and d[i] in " ,\t\r\n":
+            i += 1
+
+    def number(flag=False):
+        nonlocal i
+        blank()
+        if flag:  # arc flags may run into the next number: "a1 1 0 011 1"
+            if i < n and d[i] in "01":
+                i += 1
+                return float(d[i - 1])
+            raise ValueError("bad arc flag")
+        m = _PATH_NUMBER.match(d, i)
+        if not m:
+            raise ValueError("bad number")
+        i = m.end()
+        return float(m.group())
+
+    pts, cmd = [], None
+    x = y = sx = sy = 0.0
+    ctrl = None  # the last control point, for the smooth curve commands
+    while True:
+        blank()
+        if i >= n:
+            return pts
+        if d[i].isalpha():
+            cmd = d[i]
+            i += 1
+            if cmd not in "MmLlHhVvCcSsQqTtAaZz":
+                raise ValueError("unknown command")
+            if cmd in "Zz":
+                x, y, ctrl = sx, sy, None
+                continue
+        elif cmd is None or cmd in "Zz":
+            raise ValueError("numbers without a command")
+        c, rel = cmd.lower(), cmd.islower()
+        ox, oy = (x, y) if rel else (0.0, 0.0)
+        reflected = (2 * x - ctrl[0], 2 * y - ctrl[1]) if ctrl else (x, y)  # the first control point of s and t
+        if c in "ml":
+            x, y = number() + ox, number() + oy
+            if c == "m":
+                sx, sy, cmd = x, y, ("l" if rel else "L")
+            pts.append((x, y))
+            ctrl = None
+        elif c == "h":
+            x = number() + ox
+            pts.append((x, y))
+            ctrl = None
+        elif c == "v":
+            y = number() + oy
+            pts.append((x, y))
+            ctrl = None
+        elif c in "cs":
+            p1 = (number() + ox, number() + oy) if c == "c" else reflected
+            p2 = (number() + ox, number() + oy)
+            p3 = (number() + ox, number() + oy)
+            for k in range(1, 9):
+                u = k / 8
+                a, b, e, f = (1 - u) ** 3, 3 * (1 - u) ** 2 * u, 3 * (1 - u) * u**2, u**3
+                pts.append((a * x + b * p1[0] + e * p2[0] + f * p3[0], a * y + b * p1[1] + e * p2[1] + f * p3[1]))
+            (x, y), ctrl = p3, p2
+        elif c in "qt":
+            p1 = (number() + ox, number() + oy) if c == "q" else reflected
+            p2 = (number() + ox, number() + oy)
+            for k in range(1, 9):
+                u = k / 8
+                a, b, e = (1 - u) ** 2, 2 * (1 - u) * u, u**2
+                pts.append((a * x + b * p1[0] + e * p2[0], a * y + b * p1[1] + e * p2[1]))
+            (x, y), ctrl = p2, p1
+        else:  # a
+            rx, ry, rotation = number(), number(), number()
+            large, sweep = number(flag=True), number(flag=True)
+            ex, ey = number() + ox, number() + oy
+            pts += _arc_points(x, y, rx, ry, rotation, large, sweep, ex, ey) or [(ex, ey)]
+            x, y, ctrl = ex, ey, None
+    return pts
+
+
+def _shape_box(el):
+    """(x0, y0, x1, y1) of a shape in its own units, or None when it cannot be worked out."""
+    tag = el.tag.split("}")[-1]
+    try:
+        if tag in ("circle", "ellipse"):
+            rx = _num(el.get("rx" if tag == "ellipse" else "r"))
+            ry = _num(el.get("ry")) if tag == "ellipse" else rx
+            cx, cy = _num(el.get("cx")) or 0.0, _num(el.get("cy")) or 0.0
+            if rx is None or ry is None:
+                return None
+            return cx - rx, cy - ry, cx + rx, cy + ry
+        if tag == "rect":
+            x, y = _num(el.get("x")) or 0.0, _num(el.get("y")) or 0.0
+            w, h = _num(el.get("width")), _num(el.get("height"))
+            return None if w is None or h is None else (x, y, x + w, y + h)
+        if tag in ("polyline", "polygon"):
+            nums = [float(v) for v in _PATH_NUMBER.findall(el.get("points", ""))]
+            pts = list(zip(nums[0::2], nums[1::2], strict=False))
+        else:
+            pts = _path_points(el.get("d", ""))
+    except ValueError:
+        return None
+    if not pts:
+        return None
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _stroked_and_filled(el, fill, stroke, width):
+    """Stroke width if the shape has a fill and a stroke of its own, else None. A fill nobody gave is not guessed at."""
+    if fill is None or fill in _NO_PAINT or stroke is None or stroke in _NO_PAINT:
+        return None
+    if width is None:
+        return 1.0
+    w = None if width.endswith("%") else _num(width)
+    return w if w and w > 0 else None
+
+
+def _split_shape(el, stroke, w):
+    """The shapes that draw what `el` draws: a point with round caps if it is a dot, else its fill and its stroke."""
+    box = _shape_box(el)
+    if box and max(box[2] - box[0], box[3] - box[1]) < w:
+        # SwiftDraw draws the stroke of a closed shape smaller than the stroke as a ring with a hole in it, which shows
+        # at the heavier weights. A point with round caps is a solid dot that grows with the weight, and a dot as wide
+        # as the shape with its stroke is what the browser draws.
+        x, y = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        tag = el.tag[: el.tag.rfind("}") + 1]
+        dot = ET.Element(
+            f"{tag}path",
+            {
+                "d": f"M{_fmt(x)} {_fmt(y)}h.01",
+                "fill": "none",
+                "stroke": stroke,
+                "stroke-width": _fmt(max(box[2] - box[0], box[3] - box[1]) + w),
+                "stroke-linecap": "round",
+            },
+        )
+        for keep in ("transform", "id"):
+            if el.get(keep) is not None:
+                dot.set(keep, el.get(keep))
+        return [dot]
+    fill_only, stroke_only = copy.deepcopy(el), copy.deepcopy(el)
+    _put(fill_only, "stroke", "none")
+    _put(stroke_only, "fill", "none")
+    if "id" in fill_only.attrib:
+        del fill_only.attrib["id"]
+    return [fill_only, stroke_only]
+
+
+def _split_children(parent, fill, stroke, width):
+    changed = False
+    for child in list(parent):
+        tag = child.tag.split("}")[-1]
+        if tag in _UNDRAWN:
+            continue
+        f = _own(child, "fill") or fill
+        s = _own(child, "stroke") or stroke
+        w = _own(child, "stroke-width") or width
+        sw = _stroked_and_filled(child, f, s, w) if tag in _FILLED_SHAPES else None
+        if sw is not None:
+            at = list(parent).index(child)
+            parent.remove(child)
+            for k, new in enumerate(_split_shape(child, s, sw)):
+                parent.insert(at + k, new)
+            changed = True
+        else:
+            changed |= _split_children(child, f, s, w)
+    return changed
+
+
+def split_fills_from_strokes(svg_text):
+    """The SVG with every shape that has both a fill and a stroke replaced by shapes that draw the same with only one.
+
+    Dots (shapes smaller than their own stroke) become a round-capped point as wide as the dot with its stroke;
+    other shapes become one copy that is only filled and one that is only stroked. An SVG without such shapes comes
+    back exactly as it was."""
+    root = _parse(svg_text)
+    if not _split_children(root, *(_own(root, name) for name in ("fill", "stroke", "stroke-width"))):
+        return svg_text
+    return ET.tostring(root, encoding="unicode")

@@ -76,6 +76,24 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertAlmostEqual(make_template(svg).stroke, 2.25, places=3)
 
+    def test_a_filled_dot_keeps_its_stroke_and_grows_with_the_weight(self):
+        """SwiftDraw draws only the fill of a shape with both, so dots like Lucide's palette came out 1 unit wide."""
+        head = (
+            f'<svg {NS} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+        )
+        ring = '<circle cx="12" cy="12" r="9"/>'
+        dot = '<circle cx="12" cy="12" r=".5" fill="currentColor"/>'
+        with_dot = make_template(f"{head}{ring}{dot}</svg>")
+        fill_only = make_template(f'<svg {NS} viewBox="0 0 24 24"><circle cx="12" cy="12" r=".5" fill="black"/></svg>')
+        unit = master_width(fill_only, "regular")  # one grid unit, in template units
+        widths = {k: bbox(with_dot.masters[k][-1]) for k in ("ultralight", "regular", "black")}
+        widths = {k: (b[2] - b[0]) / unit for k, b in widths.items()}
+        self.assertEqual((with_dot.status, with_dot.problem, with_dot.notes), ("variable", False, []))
+        self.assertEqual(len(with_dot.masters["regular"]), 2)
+        self.assertAlmostEqual(widths["regular"], 3.0, delta=0.05)  # 2 * 0.5 + the stroke, as the browser draws it
+        self.assertLess(widths["ultralight"], widths["regular"])
+        self.assertLess(widths["regular"], widths["black"])
+
     def test_fill_only_svg_has_no_regular_stroke(self):
         r = make_template(f'<svg {NS} viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="black"/></svg>')
         self.assertIsNone(r.stroke)
