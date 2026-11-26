@@ -1,0 +1,6 @@
+# The SwiftDraw this project converts icons with. Everything that builds the site (./ci.sh, the workflows) uses exactly this
+# version: scripts/install-swiftdraw.sh builds it from the tag below, and the build refuses to run with any other in CI.
+# To upgrade, change both lines (the commit is what the tag points at: `git ls-remote https://github.com/swhitty/SwiftDraw
+# <version>`), run ./ci.sh, and look at what changed in the icons before you merge.
+version=0.30.0
+commit=184372f0b9ca3f2b416e51e869ca93cfaed5c8a9

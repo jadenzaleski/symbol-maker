@@ -474,6 +474,33 @@ class WorkDirTests(unittest.TestCase):
         self.assertEqual(sitebuild.work_dir(Path("/x/dist.nosync")).parent, Path("/x"))
 
 
+class SwiftDrawPinTests(unittest.TestCase):
+    """The project is pinned to one SwiftDraw version (.swiftdraw-version), so a release cannot change with Homebrew."""
+
+    def test_the_pin_file_in_the_repository_holds_a_version_and_the_commit_of_its_tag(self):
+        pin = sitebuild.pinned_swiftdraw()
+        self.assertRegex(pin["version"], r"^\d+\.\d+\.\d+$")
+        self.assertRegex(pin["commit"], r"^[0-9a-f]{40}$")
+
+    def test_a_pin_file_is_read_as_key_value_lines_and_a_missing_one_is_no_pin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".swiftdraw-version"
+            path.write_text("# a comment\nversion=0.30.0\ncommit=" + "a" * 40 + "\n")
+            self.assertEqual(sitebuild.pinned_swiftdraw(path), {"version": "0.30.0", "commit": "a" * 40})
+            self.assertIsNone(sitebuild.pinned_swiftdraw(Path(tmp) / "nothing-here"))
+
+    def test_a_problem_is_reported_only_when_the_installed_version_is_not_the_pinned_one(self):
+        pin = {"version": "0.30.0", "commit": "a" * 40}
+        self.assertIsNone(sitebuild.swiftdraw_pin_problem("0.30.0", pin))
+        self.assertIsNone(sitebuild.swiftdraw_pin_problem("0.31.0", None))  # nothing pinned, nothing to check
+        for found in ("0.29.0", "0.31.0", "unknown"):
+            with self.subTest(found):
+                msg = sitebuild.swiftdraw_pin_problem(found, pin)
+                self.assertIn("0.30.0", msg)
+                self.assertIn(found, msg)
+                self.assertIn("install-swiftdraw.sh", msg)
+
+
 class FingerprintTests(unittest.TestCase):
     def test_depends_on_swiftdraw_version_and_is_stable(self):
         a = sitebuild.engine_fingerprint("0.29.0")

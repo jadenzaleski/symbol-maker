@@ -5,6 +5,7 @@
 /dist.nosync/
 /dist.building.nosync/
 /build-cache.nosync/
+/.swiftdraw.nosync/
 
 # Python / macOS
 __pycache__/

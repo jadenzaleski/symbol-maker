@@ -42,7 +42,9 @@ The page is plain HTML, CSS and JavaScript in `site/` with no build step:
 ## Run it yourself
 
 You need a Mac with [uv](https://docs.astral.sh/uv/) (`brew install uv`) and [SwiftDraw](https://github.com/swhitty/SwiftDraw)
-(`brew install swiftdraw`). uv installs the right Python (3.12) and the dev tools for you; the program itself uses only the
+at the version pinned in `.swiftdraw-version` (Homebrew only has the newest one, so build it with
+`scripts/install-swiftdraw.sh` and put `.swiftdraw.nosync` first on your `PATH`; `brew install swiftdraw` works for trying
+things out, but the build warns if the version differs, and fails in CI). uv installs the right Python (3.12) and the dev tools for you; the program itself uses only the
 standard library. Node (for the page's JavaScript tests) is optional, and Xcode is only needed for the tests that compile a
 sample catalog with `actool`.
 
@@ -141,6 +143,9 @@ If a release's deploy fails, run **Release** by hand from the Actions tab with t
 (files already attached are replaced). The first release will be `0.1.0` (the version starts at `0.0.0`, and below 1.0 a
 feature is a minor bump); to make a particular version, put `Release-As: 1.0.0` in the footer of a commit message.
 
-The workflows install whatever SwiftDraw version Homebrew has; the version used is recorded in `sources.json` and shown on
-the page. Dependabot (`.github/dependabot.yml`) opens a weekly pull request for newer versions of the GitHub Actions the
+The workflows build the SwiftDraw version pinned in `.swiftdraw-version` from its tag (checked against the commit written
+there) and cache it, so a release cannot change because Homebrew moved on; the build fails in CI if any other version is
+installed. The version used is recorded in `sources.json` and shown on the page. To upgrade, change both lines of the pin file
+(`git ls-remote https://github.com/swhitty/SwiftDraw <version>` gives the commit), run `./ci.sh`, and look at what changed in
+the icons before merging. Nothing reminds you of new SwiftDraw releases: look at its releases page now and then. Dependabot (`.github/dependabot.yml`) opens a weekly pull request for newer versions of the GitHub Actions the
 workflows use and of the dev tools in `uv.lock`.
