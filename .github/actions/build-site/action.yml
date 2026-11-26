@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Install uv and Python
       # uv gets Python and the dev tools (ruff, ty) from pyproject.toml and uv.lock; ./ci.sh runs everything through it
-      uses: astral-sh/setup-uv@v10.3.3
+      uses: astral-sh/setup-uv@v10.4.0
       with:
         python-version: '3.12'
         enable-cache: true
